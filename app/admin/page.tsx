@@ -36,9 +36,18 @@ import {
   FileX,
   Briefcase,
   Quote,
-  Users
+  Users,
+  Folder,
+  Upload,
+  Film,
+  Music,
+  Image as ImageIcon,
+  Copy,
+  ExternalLink,
+  Loader2
 } from 'lucide-react'
 import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo } from '@/lib/cms'
+import { uploadImage } from '@/lib/supabase'
 
 const blockTypes = [
   { type: 'hero', label: 'Hero', icon: Layout, description: 'Stor header med titel og CTA' },
@@ -96,9 +105,37 @@ function Dashboard() {
   const [editingCases, setEditingCases] = useState(false)
   const [editingTestimonials, setEditingTestimonials] = useState(false)
   const [editingCompanyLogos, setEditingCompanyLogos] = useState(false)
+  const [editingMediaLibrary, setEditingMediaLibrary] = useState(false)
   const [editingCase, setEditingCase] = useState<string | null>(null)
   const [editingTestimonial, setEditingTestimonial] = useState<string | null>(null)
   const [editingLogo, setEditingLogo] = useState<string | null>(null)
+  const [showMediaPicker, setShowMediaPicker] = useState(false)
+  const [mediaPickerTarget, setMediaPickerTarget] = useState<'logo' | 'favicon'>('logo')
+  const [uploadingLogo, setUploadingLogo] = useState(false)
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
+  const [uploadingFavicon, setUploadingFavicon] = useState(false)
+
+  const uploadToMediaLibrary = async (file: File): Promise<string | null> => {
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await fetch('/api/media', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      return data.file?.url || null
+    } catch (error) {
+      console.error('Upload error:', error)
+      return null
+    }
+  }
+
+  const updateContactForm = (updates: Partial<typeof contactForm>) => {
+    setContactForm(prev => ({ ...prev, ...updates }))
+    setHasUnsavedChanges(true)
+  }
+
   const [contactForm, setContactForm] = useState({
     companyName: '',
     email: '',
@@ -116,12 +153,6 @@ function Dashboard() {
       setIsReady(true)
     }
   }, [isAuthenticated, router])
-
-  useEffect(() => {
-    if (isReady && pages.length > 0 && !selectedPage) {
-      setSelectedPage(pages[0].slug)
-    }
-  }, [isReady, pages])
 
   if (!isAuthenticated || !isReady) {
     return (
@@ -185,6 +216,10 @@ function Dashboard() {
   }
 
   const handleSave = () => {
+    if (editingContactInfo) {
+      updateContactInfo(contactForm)
+    }
+    setHasUnsavedChanges(false)
     setSaved(true)
     setTimeout(() => setSaved(false), 2000)
   }
@@ -224,13 +259,16 @@ function Dashboard() {
             )}
             <button
               onClick={handleSave}
-              className={`px-4 py-2 rounded-lg font-medium transition-colors ${
+              disabled={!hasUnsavedChanges && !saved}
+              className={`px-4 py-2 rounded-lg font-medium transition-colors flex items-center gap-2 ${
                 saved 
                   ? 'bg-green-500 text-white' 
-                  : 'bg-blue-500 hover:bg-blue-600 text-white'
+                  : hasUnsavedChanges
+                    ? 'bg-blue-500 hover:bg-blue-600 text-white'
+                    : 'bg-slate-200 dark:bg-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
               }`}
             >
-              <Save size={18} className="inline mr-2" />
+              <Save size={18} />
               {saved ? 'Gemt!' : 'Gem ændringer'}
             </button>
             <button
@@ -283,7 +321,7 @@ function Dashboard() {
                   return (
                     <div key={page.slug}>
                       <button
-                        onClick={() => { setSelectedPage(page.slug); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false) }}
+                        onClick={() => { setSelectedPage(page.slug); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors group ${indentClass} ${
                           selectedPage === page.slug && !editingNavigation
                             ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -304,7 +342,7 @@ function Dashboard() {
                           >
                             <Pencil size={14} />
                           </button>
-                          {page.slug !== 'home' && page.slug !== 'ydelser' && (
+                          {page.slug !== 'home' && (
                             <button
                               onClick={(e) => { e.stopPropagation(); setDeleteConfirm(page.slug) }}
                               className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity"
@@ -336,7 +374,7 @@ function Dashboard() {
                 Navigation
               </h2>
               <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(true); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false) }}
+                onClick={() => { setSelectedPage(null); setEditingNavigation(true); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                   editingNavigation
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -350,7 +388,7 @@ function Dashboard() {
             
             <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
               <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(true); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setContactForm({ ...contactInfo, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '' }) }}
+                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(true); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setContactForm({ ...contactInfo, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '' }) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                   editingContactInfo
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -367,7 +405,7 @@ function Dashboard() {
                 Indhold
               </h2>
               <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(true); setEditingTestimonials(false); setEditingCompanyLogos(false) }}
+                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(true); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                   editingCases
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -378,7 +416,7 @@ function Dashboard() {
                 <span className="text-sm font-medium">Cases</span>
               </button>
               <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(true); setEditingCompanyLogos(false) }}
+                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(true); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                   editingTestimonials
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -389,7 +427,7 @@ function Dashboard() {
                 <span className="text-sm font-medium">Kundeudtalelser</span>
               </button>
               <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(true) }}
+                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(true); setEditingMediaLibrary(false) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                   editingCompanyLogos
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -398,6 +436,17 @@ function Dashboard() {
               >
                 <Users size={18} />
                 <span className="text-sm font-medium">Firmalogoer</span>
+              </button>
+              <button
+                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(true) }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                  editingMediaLibrary
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Folder size={18} />
+                <span className="text-sm font-medium">Mediebibliotek</span>
               </button>
             </div>
             
@@ -558,7 +607,6 @@ function Dashboard() {
                                     addNavItem({
                                       id: `nav-${Date.now()}`,
                                       label: 'Nyt underpunkt',
-                                      labelEn: 'New subitem',
                                       type: 'link',
                                       href: '/ny-side'
                                     }, item.id)
@@ -695,7 +743,7 @@ function Dashboard() {
                     <input
                       type="text"
                       value={contactForm.companyName}
-                      onChange={e => setContactForm({ ...contactForm, companyName: e.target.value })}
+                      onChange={e => updateContactForm({ companyName: e.target.value })}
                       className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                     />
                   </div>
@@ -705,7 +753,7 @@ function Dashboard() {
                     <input
                       type="email"
                       value={contactForm.email}
-                      onChange={e => setContactForm({ ...contactForm, email: e.target.value })}
+                      onChange={e => updateContactForm({ email: e.target.value })}
                       className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                     />
                   </div>
@@ -715,7 +763,7 @@ function Dashboard() {
                     <input
                       type="tel"
                       value={contactForm.phone}
-                      onChange={e => setContactForm({ ...contactForm, phone: e.target.value })}
+                      onChange={e => updateContactForm({ phone: e.target.value })}
                       className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                     />
                   </div>
@@ -725,7 +773,7 @@ function Dashboard() {
                     <input
                       type="text"
                       value={contactForm.address}
-                      onChange={e => setContactForm({ ...contactForm, address: e.target.value })}
+                      onChange={e => updateContactForm({ address: e.target.value })}
                       className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                     />
                   </div>
@@ -735,7 +783,7 @@ function Dashboard() {
                     <input
                       type="text"
                       value={contactForm.cvr}
-                      onChange={e => setContactForm({ ...contactForm, cvr: e.target.value })}
+                      onChange={e => updateContactForm({ cvr: e.target.value })}
                       className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
                     />
                   </div>
@@ -743,52 +791,76 @@ function Dashboard() {
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Logo</label>
                     {contactForm.logo && <img src={contactForm.logo} alt="Logo" className="w-full h-24 object-contain mb-2 bg-white rounded-lg p-2" />}
-                    <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                      <input type="file" className="hidden" accept="image/*" onChange={e => {
-                        const file = e.target.files?.[0]
-                        if (file) {
-                          const reader = new FileReader()
-                          reader.onloadend = () => setContactForm({ ...contactForm, logo: reader.result as string })
-                          reader.readAsDataURL(file)
-                        }
-                      }} />
-                      <span className="text-slate-500">Klik for at vælge logo</span>
-                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setMediaPickerTarget('logo'); setShowMediaPicker(true) }}
+                        className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <Folder size={18} className="mr-2 text-slate-400" />
+                        <span className="text-slate-500">Vælg fra bibliotek</span>
+                      </button>
+                      <label className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                        <input type="file" className="hidden" accept="image/*" onChange={async e => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            setUploadingLogo(true)
+                            const url = await uploadToMediaLibrary(file)
+                            if (url) updateContactForm({ logo: url })
+                            setUploadingLogo(false)
+                          }
+                        }} />
+                        <Upload size={18} className="mr-2 text-slate-400" />
+                        <span className="text-slate-500">{uploadingLogo ? 'Uploader...' : 'Upload ny'}</span>
+                      </label>
+                    </div>
+                    {contactForm.logo && (
+                      <button
+                        type="button"
+                        onClick={() => updateContactForm({ logo: '' })}
+                        className="mt-2 text-sm text-red-500 hover:text-red-600"
+                      >
+                        Fjern logo
+                      </button>
+                    )}
                   </div>
                   
                   <div>
                     <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Favicon</label>
                     {contactForm.favicon && <img src={contactForm.favicon} alt="Favicon" className="w-12 h-12 object-contain mb-2 bg-white rounded-lg p-1" />}
-                    <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-                      <input type="file" className="hidden" accept="image/*" onChange={e => {
-                        const file = e.target.files?.[0]
-                        if (file) {
-                          const reader = new FileReader()
-                          reader.onloadend = () => setContactForm({ ...contactForm, favicon: reader.result as string })
-                          reader.readAsDataURL(file)
-                        }
-                      }} />
-                      <span className="text-slate-500">Klik for at vælge favicon</span>
-                    </label>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setMediaPickerTarget('favicon'); setShowMediaPicker(true) }}
+                        className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <Folder size={18} className="mr-2 text-slate-400" />
+                        <span className="text-slate-500">Vælg fra bibliotek</span>
+                      </button>
+                      <label className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                        <input type="file" className="hidden" accept="image/*" onChange={async e => {
+                          const file = e.target.files?.[0]
+                          if (file) {
+                            setUploadingFavicon(true)
+                            const url = await uploadToMediaLibrary(file)
+                            if (url) updateContactForm({ favicon: url })
+                            setUploadingFavicon(false)
+                          }
+                        }} />
+                        <Upload size={18} className="mr-2 text-slate-400" />
+                        <span className="text-slate-500">{uploadingFavicon ? 'Uploader...' : 'Upload ny'}</span>
+                      </label>
+                    </div>
+                    {contactForm.favicon && (
+                      <button
+                        type="button"
+                        onClick={() => updateContactForm({ favicon: '' })}
+                        className="mt-2 text-sm text-red-500 hover:text-red-600"
+                      >
+                        Fjern favicon
+                      </button>
+                    )}
                   </div>
-                </div>
-                
-                <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
-                  <button
-                    onClick={() => setEditingContactInfo(false)}
-                    className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
-                  >
-                    Annuller
-                  </button>
-                  <button
-                    onClick={() => {
-                      updateContactInfo(contactForm)
-                      setEditingContactInfo(false)
-                    }}
-                    className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
-                  >
-                    Gem ændringer
-                  </button>
                 </div>
               </div>
             </div>
@@ -804,9 +876,7 @@ function Dashboard() {
                       const newCase: Case = {
                         id: `case-${Date.now()}`,
                         title: 'Ny case',
-                        titleEn: 'New case',
                         description: '',
-                        descriptionEn: '',
                         image: '',
                         tags: []
                       }
@@ -871,9 +941,7 @@ function Dashboard() {
                         id: `testimonial-${Date.now()}`,
                         name: 'Ny kunde',
                         role: 'Titel',
-                        roleEn: 'Role',
                         content: '',
-                        contentEn: '',
                         image: ''
                       }
                       addTestimonial(newTestimonial)
@@ -994,7 +1062,28 @@ function Dashboard() {
             </div>
           )}
 
-          {currentPage && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && (
+          {editingMediaLibrary && (
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="max-w-6xl mx-auto">
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Mediebibliotek</h2>
+                </div>
+                
+                <MediaLibrary />
+              </div>
+            </div>
+          )}
+          
+          {selectedPage === null && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && !editingMediaLibrary && (
+            <div className="flex-1 flex items-center justify-center text-slate-500 dark:text-slate-400">
+              <div className="text-center">
+                <Layout size={64} className="mx-auto mb-4 opacity-50" />
+                <p className="text-lg">Vælg en side fra menuen for at redigere</p>
+              </div>
+            </div>
+          )}
+
+          {currentPage && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && !editingMediaLibrary && (
             <>
               <div className="px-6 py-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <div>
@@ -1419,6 +1508,19 @@ function Dashboard() {
         />
       )}
 
+      {showMediaPicker && (
+        <MediaPickerModal
+          onSelect={(url) => {
+            if (mediaPickerTarget === 'logo') {
+              updateContactForm({ logo: url })
+            } else {
+              updateContactForm({ favicon: url })
+            }
+          }}
+          onClose={() => setShowMediaPicker(false)}
+        />
+      )}
+
       {editingLogo && companyLogos.find(l => l.id === editingLogo) && (
         <EditLogoModal
           logo={companyLogos.find(l => l.id === editingLogo)!}
@@ -1570,7 +1672,6 @@ function BlockEditModal({ block, onClose, onSave }: { block: CMSBlock; onClose: 
 
 function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pages: any[]; onClose: () => void; onSave: (updates: Partial<NavItem>) => void }) {
   const [label, setLabel] = useState(item.label)
-  const [labelEn, setLabelEn] = useState(item.labelEn)
   const [type, setType] = useState<'link' | 'dropdown'>(item.type)
   const [href, setHref] = useState(item.href || '')
   const [pageSlug, setPageSlug] = useState(item.pageSlug || '')
@@ -1578,7 +1679,6 @@ function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pag
   const handleSave = () => {
     onSave({
       label,
-      labelEn,
       type,
       href: type === 'link' ? href : undefined,
       pageSlug: pageSlug || undefined
@@ -1594,20 +1694,11 @@ function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pag
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Label (Dansk)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Label</label>
             <input
               type="text"
               value={label}
               onChange={e => setLabel(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Label (Engelsk)</label>
-            <input
-              type="text"
-              value={labelEn}
-              onChange={e => setLabelEn(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
             />
           </div>
@@ -1705,6 +1796,22 @@ function MetaEditModal({ page, onClose, onSave }: { page: any; onClose: () => vo
               placeholder="Kort beskrivelse af siden..."
             />
           </div>
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Google Søgning Preview</label>
+            <div className="bg-white dark:bg-slate-100 rounded-lg p-4 border border-slate-200">
+              <div className="flex flex-col">
+                <span className="text-sm text-slate-500 truncate">
+                  staymain.dk{page.slug === 'home' ? '' : `/${page.slug}`}
+                </span>
+                <span className="text-xl text-blue-700 hover:underline cursor-pointer truncate">
+                  {metaTitle || `${page.title} | StayMain`}
+                </span>
+                <span className="text-sm text-slate-600 leading-snug">
+                  {metaDescription || <span className="text-slate-400 italic">Ingen meta beskrivelse angivet...</span>}
+                </span>
+              </div>
+            </div>
+          </div>
         </div>
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
           <button
@@ -1795,7 +1902,6 @@ function PageEditModal({ page, pages, onClose, onSave }: { page: { slug: string;
 
 function AddNavItemModal({ pages, navigation, onClose, onSave }: { pages: any[]; navigation: NavItem[]; onClose: () => void; onSave: (item: NavItem, parentId?: string) => void }) {
   const [label, setLabel] = useState('')
-  const [labelEn, setLabelEn] = useState('')
   const [type, setType] = useState<'link' | 'dropdown'>('link')
   const [href, setHref] = useState('')
   const [pageSlug, setPageSlug] = useState('')
@@ -1805,7 +1911,6 @@ function AddNavItemModal({ pages, navigation, onClose, onSave }: { pages: any[];
     const newItem: NavItem = {
       id: `nav-${Date.now()}`,
       label,
-      labelEn,
       type,
       href: type === 'link' ? href : undefined,
       pageSlug: pageSlug || undefined
@@ -1822,20 +1927,11 @@ function AddNavItemModal({ pages, navigation, onClose, onSave }: { pages: any[];
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Label (Dansk)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Label</label>
             <input
               type="text"
               value={label}
               onChange={e => setLabel(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Label (Engelsk)</label>
-            <input
-              type="text"
-              value={labelEn}
-              onChange={e => setLabelEn(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
             />
           </div>
@@ -2156,9 +2252,7 @@ function CreatedUserModal({ email, password, onClose }: { email: string; passwor
 
 function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case; onClose: () => void; onSave: (updates: Partial<Case>) => void; onDelete: () => void }) {
   const [title, setTitle] = useState(caseItem.title)
-  const [titleEn, setTitleEn] = useState(caseItem.titleEn)
   const [description, setDescription] = useState(caseItem.description)
-  const [descriptionEn, setDescriptionEn] = useState(caseItem.descriptionEn)
   const [image, setImage] = useState(caseItem.image)
   const [link, setLink] = useState(caseItem.link || '')
   const [tags, setTags] = useState(caseItem.tags.join(', '))
@@ -2166,9 +2260,7 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
   const handleSave = () => {
     onSave({
       title,
-      titleEn,
       description,
-      descriptionEn,
       image,
       link: link || undefined,
       tags: tags.split(',').map(t => t.trim()).filter(Boolean)
@@ -2185,20 +2277,12 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
         </div>
         <div className="p-6 space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel (Dansk)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel</label>
             <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel (Engelsk)</label>
-            <input type="text" value={titleEn} onChange={e => setTitleEn(e.target.value)} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse (Dansk)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse</label>
             <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse (Engelsk)</label>
-            <textarea value={descriptionEn} onChange={e => setDescriptionEn(e.target.value)} rows={3} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Link (valgfrit)</label>
@@ -2245,13 +2329,11 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
 function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { testimonial: Testimonial; onClose: () => void; onSave: (updates: Partial<Testimonial>) => void; onDelete: () => void }) {
   const [name, setName] = useState(testimonial.name)
   const [role, setRole] = useState(testimonial.role)
-  const [roleEn, setRoleEn] = useState(testimonial.roleEn)
   const [content, setContent] = useState(testimonial.content)
-  const [contentEn, setContentEn] = useState(testimonial.contentEn)
   const [image, setImage] = useState(testimonial.image)
 
   const handleSave = () => {
-    onSave({ name, role, roleEn, content, contentEn, image })
+    onSave({ name, role, content, image })
     onClose()
   }
 
@@ -2268,20 +2350,12 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
             <input type="text" value={name} onChange={e => setName(e.target.value)} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel (Dansk)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel</label>
             <input type="text" value={role} onChange={e => setRole(e.target.value)} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel (Engelsk)</label>
-            <input type="text" value={roleEn} onChange={e => setRoleEn(e.target.value)} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Udtalelse (Dansk)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Udtalelse</label>
             <textarea value={content} onChange={e => setContent(e.target.value)} rows={4} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Udtalelse (Engelsk)</label>
-            <textarea value={contentEn} onChange={e => setContentEn(e.target.value)} rows={4} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
           </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Billede</label>
@@ -2317,14 +2391,352 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
   )
 }
 
+interface MediaFile {
+  name: string
+  url: string
+  size: number
+  type: string
+  category: string
+  createdAt: string
+}
+
+function MediaLibrary() {
+  const [files, setFiles] = useState<MediaFile[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [filter, setFilter] = useState<string>('all')
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    fetchFiles()
+  }, [])
+
+  const fetchFiles = async () => {
+    try {
+      const res = await fetch('/api/media')
+      const data = await res.json()
+      setFiles(data.files || [])
+    } catch (error) {
+      console.error('Error fetching files:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files
+    if (!fileList) return
+
+    setUploading(true)
+    const newFiles: MediaFile[] = []
+
+    for (let i = 0; i < fileList.length; i++) {
+      const file = fileList[i]
+      const formData = new FormData()
+      formData.append('file', file)
+
+      try {
+        const res = await fetch('/api/media', {
+          method: 'POST',
+          body: formData,
+        })
+        const data = await res.json()
+        if (data.file) {
+          newFiles.push(data.file)
+        }
+      } catch (error) {
+        console.error('Error uploading file:', error)
+      }
+    }
+
+    setFiles(prev => [...newFiles, ...prev])
+    setUploading(false)
+    e.target.value = ''
+  }
+
+  const handleDelete = async (fileName: string) => {
+    if (!confirm('Er du sikker på at du vil slette denne fil?')) return
+
+    try {
+      await fetch(`/api/media?file=${encodeURIComponent(fileName)}`, {
+        method: 'DELETE',
+      })
+      setFiles(prev => prev.filter(f => f.name !== fileName))
+    } catch (error) {
+      console.error('Error deleting file:', error)
+    }
+  }
+
+  const copyToClipboard = (url: string) => {
+    navigator.clipboard.writeText(window.location.origin + url)
+    setCopiedUrl(url)
+    setTimeout(() => setCopiedUrl(null), 2000)
+  }
+
+  const formatSize = (bytes: number) => {
+    if (bytes < 1024) return bytes + ' B'
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+  }
+
+  const filteredFiles = filter === 'all' 
+    ? files 
+    : files.filter(f => f.category === filter)
+
+  const getFileIcon = (category: string) => {
+    switch (category) {
+      case 'image': return <ImageIcon size={24} />
+      case 'video': return <Film size={24} />
+      case 'audio': return <Music size={24} />
+      case 'document': return <FileText size={24} />
+      default: return <FileText size={24} />
+    }
+  }
+
+  const categories = [
+    { id: 'all', label: 'Alle', icon: Folder },
+    { id: 'image', label: 'Billeder', icon: ImageIcon },
+    { id: 'video', label: 'Videoer', icon: Film },
+    { id: 'audio', label: 'Lyd', icon: Music },
+    { id: 'document', label: 'Dokumenter', icon: FileText },
+  ]
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
+        <div className="flex items-center justify-between gap-4 mb-4">
+          <div className="flex gap-2">
+            {categories.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setFilter(cat.id)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  filter === cat.id
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                }`}
+              >
+                <cat.icon size={14} />
+                {cat.label}
+              </button>
+            ))}
+          </div>
+          <label className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg cursor-pointer transition-colors">
+            {uploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
+            <span>{uploading ? 'Uploader...' : 'Upload filer'}</span>
+            <input
+              type="file"
+              className="hidden"
+              multiple
+              accept="image/*,video/*,audio/*,.pdf"
+              onChange={handleUpload}
+              disabled={uploading}
+            />
+          </label>
+        </div>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 size={32} className="animate-spin text-slate-400" />
+        </div>
+      ) : filteredFiles.length === 0 ? (
+        <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
+          <Folder size={48} className="mx-auto mb-4 text-slate-300" />
+          <p className="text-slate-500">Ingen filer endnu</p>
+          <p className="text-sm text-slate-400 mt-1">Upload billeder, videoer, lyd eller dokumenter</p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {filteredFiles.map((file, index) => (
+            <div
+              key={`${file.name}-${index}`}
+              className="group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
+            >
+              <div className="aspect-square flex items-center justify-center bg-slate-100 dark:bg-slate-700 relative">
+                {file.category === 'image' ? (
+                  <img
+                    src={file.url}
+                    alt={file.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="text-slate-400">
+                    {getFileIcon(file.category)}
+                  </div>
+                )}
+                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                  <button
+                    onClick={() => copyToClipboard(file.url)}
+                    className="p-2 bg-white rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+                    title="Kopier URL"
+                  >
+                    {copiedUrl === file.url ? <Check size={16} /> : <Copy size={16} />}
+                  </button>
+                  <a
+                    href={file.url}
+                    target="_blank"
+                    className="p-2 bg-white rounded-lg text-slate-700 hover:bg-slate-100 transition-colors"
+                    title="Åbn i ny fane"
+                  >
+                    <ExternalLink size={16} />
+                  </a>
+                  <button
+                    onClick={() => handleDelete(file.name)}
+                    className="p-2 bg-white rounded-lg text-red-500 hover:bg-red-50 transition-colors"
+                    title="Slet"
+                  >
+                    <Trash2 size={16} />
+                  </button>
+                </div>
+              </div>
+              <div className="p-3">
+                <p className="text-sm font-medium text-slate-900 dark:text-white truncate" title={file.name}>
+                  {file.name}
+                </p>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  {formatSize(file.size)}
+                </p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+interface MediaPickerModalProps {
+  onSelect: (url: string) => void
+  onClose: () => void
+}
+
+function MediaPickerModal({ onSelect, onClose }: MediaPickerModalProps) {
+  const [files, setFiles] = useState<MediaFile[]>([])
+  const [loading, setLoading] = useState(true)
+  const [filter, setFilter] = useState<string>('image')
+
+  useEffect(() => {
+    fetchFiles()
+  }, [])
+
+  const fetchFiles = async () => {
+    try {
+      const res = await fetch('/api/media')
+      const data = await res.json()
+      setFiles(data.files || [])
+    } catch (error) {
+      console.error('Error fetching files:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const filteredFiles = files.filter(f => f.category === filter || (filter === 'image' && f.type.startsWith('image/')))
+
+  const categories = [
+    { id: 'image', label: 'Billeder', icon: ImageIcon },
+    { id: 'video', label: 'Videoer', icon: Film },
+    { id: 'audio', label: 'Lyd', icon: Music },
+    { id: 'document', label: 'Dokumenter', icon: FileText },
+  ]
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Vælg fra mediebibliotek</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">×</button>
+        </div>
+        
+        <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-700">
+          <div className="flex gap-2">
+            {categories.map(cat => (
+              <button
+                key={cat.id}
+                onClick={() => setFilter(cat.id)}
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                  filter === cat.id
+                    ? 'bg-blue-500 text-white'
+                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+                }`}
+              >
+                <cat.icon size={14} />
+                {cat.label}
+              </button>
+            ))}
+          </div>
+        </div>
+        
+        <div className="flex-1 overflow-y-auto p-6">
+          {loading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 size={32} className="animate-spin text-slate-400" />
+            </div>
+          ) : filteredFiles.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              <Folder size={48} className="mx-auto mb-4 text-slate-300" />
+              <p>Ingen filer i denne kategori</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
+              {filteredFiles.map((file, index) => (
+                <button
+                  key={`${file.name}-${index}`}
+                  onClick={() => { onSelect(file.url); onClose() }}
+                  className="group bg-slate-100 dark:bg-slate-700 rounded-lg overflow-hidden hover:ring-2 hover:ring-blue-500 transition-all"
+                >
+                  <div className="aspect-square flex items-center justify-center">
+                    {file.category === 'image' ? (
+                      <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
+                    ) : (
+                      <div className="text-slate-400">
+                        {file.category === 'video' && <Film size={32} />}
+                        {file.category === 'audio' && <Music size={32} />}
+                        {file.category === 'document' && <FileText size={32} />}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-2 text-center">
+                    <p className="text-xs text-slate-600 dark:text-slate-300 truncate">{file.name}</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo; onClose: () => void; onSave: (updates: Partial<CompanyLogo>) => void; onDelete: () => void }) {
   const [name, setName] = useState(logo.name)
   const [image, setImage] = useState(logo.image)
   const [website, setWebsite] = useState(logo.website || '')
+  const [uploading, setUploading] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
 
   const handleSave = () => {
     onSave({ name, image, website: website || undefined })
     onClose()
+  }
+
+  const handleUpload = async (file: File) => {
+    setUploading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await fetch('/api/media', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.file?.url) setImage(data.file.url)
+    } catch (error) {
+      console.error('Upload error:', error)
+    }
+    setUploading(false)
   }
 
   return (
@@ -2346,17 +2758,24 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Logo</label>
             {image && <img src={image} alt="Preview" className="w-full h-24 object-contain mb-2 bg-white rounded-lg p-2" />}
-            <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-              <input type="file" className="hidden" accept="image/*" onChange={e => {
-                const file = e.target.files?.[0]
-                if (file) {
-                  const reader = new FileReader()
-                  reader.onloadend = () => setImage(reader.result as string)
-                  reader.readAsDataURL(file)
-                }
-              }} />
-              <span className="text-slate-500">Klik for at vælge logo</span>
-            </label>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPicker(true)}
+                className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              >
+                <Folder size={18} className="mr-2 text-slate-400" />
+                <span className="text-slate-500">Vælg fra bibliotek</span>
+              </button>
+              <label className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                <input type="file" className="hidden" accept="image/*" onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleUpload(file)
+                }} />
+                <Upload size={18} className="mr-2 text-slate-400" />
+                <span className="text-slate-500">{uploading ? 'Uploader...' : 'Upload ny'}</span>
+              </label>
+            </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-3">
@@ -2373,6 +2792,13 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
           </div>
         </div>
       </div>
+      
+      {showPicker && (
+        <MediaPickerModal
+          onSelect={(url) => { setImage(url); setShowPicker(false) }}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   )
 }

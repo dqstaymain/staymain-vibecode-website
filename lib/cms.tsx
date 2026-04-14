@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { supabase, supabaseAdmin } from '@/lib/supabase'
+import { supabase, supabaseAdmin, saveCMSPages, loadCMSPages, saveCMSNavigation, loadCMSNavigation, saveCMSContactInfo, loadCMSContactInfo, saveCMSCases, loadCMSCases, saveCMSTestimonials, loadCMSTestimonials, saveCMSCompanyLogos, loadCMSCompanyLogos, deleteCMSPage, deleteCMSNavigation, deleteCMSCase, deleteCMSTestimonial, deleteCMSCompanyLogo } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
 export interface CMSBlock {
@@ -24,7 +24,6 @@ export interface CMSPage {
 export interface NavItem {
   id: string
   label: string
-  labelEn: string
   type: 'link' | 'dropdown'
   href?: string
   pageSlug?: string
@@ -50,9 +49,7 @@ export interface ContactInfo {
 export interface Case {
   id: string
   title: string
-  titleEn: string
   description: string
-  descriptionEn: string
   image: string
   link?: string
   tags: string[]
@@ -62,9 +59,7 @@ export interface Testimonial {
   id: string
   name: string
   role: string
-  roleEn: string
   content: string
-  contentEn: string
   image: string
 }
 
@@ -177,7 +172,6 @@ const defaultNavigation: NavItem[] = [
   {
     id: 'nav-ydelser',
     label: 'Ydelser',
-    labelEn: 'Services',
     type: 'link',
     href: '/ydelser',
     pageSlug: 'ydelser'
@@ -185,7 +179,6 @@ const defaultNavigation: NavItem[] = [
   {
     id: 'nav-cases',
     label: 'Cases',
-    labelEn: 'Cases',
     type: 'link',
     href: '/cases',
     pageSlug: 'cases'
@@ -193,7 +186,6 @@ const defaultNavigation: NavItem[] = [
   {
     id: 'nav-om-os',
     label: 'Om os',
-    labelEn: 'About',
     type: 'link',
     href: '/om-os',
     pageSlug: 'om-os'
@@ -201,7 +193,6 @@ const defaultNavigation: NavItem[] = [
   {
     id: 'nav-faq',
     label: 'FAQ',
-    labelEn: 'FAQ',
     type: 'link',
     href: '/ofte-stillede-spørgsmål',
     pageSlug: 'ofte-stillede-spørgsmål'
@@ -218,29 +209,9 @@ const defaultContactInfo: ContactInfo = {
   cvr: '12345678'
 }
 
-const defaultCases: Case[] = [
-  {
-    id: 'case-1',
-    title: '案例 1',
-    titleEn: 'Case 1',
-    description: '案例描述',
-    descriptionEn: 'Case description',
-    image: '',
-    tags: ['Web', 'Design']
-  }
-]
+const defaultCases: Case[] = []
 
-const defaultTestimonials: Testimonial[] = [
-  {
-    id: 'testimonial-1',
-    name: '约翰·史密斯',
-    role: 'CEO',
-    roleEn: 'CEO',
-    content: '优秀的工作！',
-    contentEn: 'Excellent work!',
-    image: ''
-  }
-]
+const defaultTestimonials: Testimonial[] = []
 
 const defaultCompanyLogos: CompanyLogo[] = []
 
@@ -342,22 +313,76 @@ function getInitialCompanyLogos(): CompanyLogo[] {
 }
 
 export function CMSProvider({ children }: { children: ReactNode }) {
-  const [pages, setPages] = useState<CMSPage[]>(getInitialPages)
-  const [navigation, setNavigation] = useState<NavItem[]>(getInitialNavigation)
+  const [pages, setPages] = useState<CMSPage[]>([])
+  const [navigation, setNavigation] = useState<NavItem[]>([])
   const [users, setUsers] = useState<CMSUser[]>([])
-  const [cases, setCases] = useState<Case[]>(getInitialCases)
-  const [testimonials, setTestimonials] = useState<Testimonial[]>(getInitialTestimonials)
-  const [companyLogos, setCompanyLogos] = useState<CompanyLogo[]>(getInitialCompanyLogos)
-  const [contactInfo, setContactInfo] = useState<ContactInfo>(getInitialContactInfo)
+  const [cases, setCases] = useState<Case[]>([])
+  const [testimonials, setTestimonials] = useState<Testimonial[]>([])
+  const [companyLogos, setCompanyLogos] = useState<CompanyLogo[]>([])
+  const [contactInfo, setContactInfo] = useState<ContactInfo>(defaultContactInfo)
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [supabaseReady, setSupabaseReady] = useState(false)
+  const [hasLoadedFromCloud, setHasLoadedFromCloud] = useState(false)
 
   useEffect(() => {
     const initSupabase = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setCurrentUser(session?.user ?? null)
-      setSupabaseReady(!!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY)
+      const hasEnvVars = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      
+      if (hasEnvVars) {
+        const { data: { session } } = await supabase.auth.getSession()
+        setCurrentUser(session?.user ?? null)
+        
+        const [cloudPages, cloudNav, cloudContact, cloudCases, cloudTestimonials, cloudLogos] = await Promise.all([
+          loadCMSPages(),
+          loadCMSNavigation(),
+          loadCMSContactInfo(),
+          loadCMSCases(),
+          loadCMSTestimonials(),
+          loadCMSCompanyLogos()
+        ])
+        
+        if (cloudPages !== null) {
+          const finalPages = cloudPages.length > 0 ? cloudPages : defaultPages
+          setPages(finalPages)
+          localStorage.setItem('cms_pages', JSON.stringify(finalPages))
+        }
+        if (cloudNav !== null) {
+          const finalNav = cloudNav.length > 0 ? cloudNav : defaultNavigation
+          setNavigation(finalNav)
+          localStorage.setItem('cms_navigation', JSON.stringify(finalNav))
+        }
+        if (cloudContact !== null) {
+          setContactInfo(cloudContact)
+          localStorage.setItem('cms_contact_info', JSON.stringify(cloudContact))
+        }
+        if (cloudCases !== null) {
+          const finalCases = cloudCases.length > 0 ? cloudCases : []
+          setCases(finalCases)
+          localStorage.setItem('cms_cases', JSON.stringify(finalCases))
+        }
+        if (cloudTestimonials !== null) {
+          const finalTestimonials = cloudTestimonials.length > 0 ? cloudTestimonials : []
+          setTestimonials(finalTestimonials)
+          localStorage.setItem('cms_testimonials', JSON.stringify(finalTestimonials))
+        }
+        if (cloudLogos !== null) {
+          const finalLogos = cloudLogos.length > 0 ? cloudLogos : []
+          setCompanyLogos(finalLogos)
+          localStorage.setItem('cms_company_logos', JSON.stringify(finalLogos))
+        }
+        
+        setHasLoadedFromCloud(true)
+      } else {
+        setPages(getInitialPages())
+        setNavigation(getInitialNavigation())
+        setContactInfo(getInitialContactInfo())
+        setCases(getInitialCases())
+        setTestimonials(getInitialTestimonials())
+        setCompanyLogos(getInitialCompanyLogos())
+      }
+      
+      setSupabaseReady(hasEnvVars)
       setIsLoading(false)
     }
 
@@ -371,28 +396,46 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   }, [])
 
   useEffect(() => {
-    localStorage.setItem('cms_pages', JSON.stringify(pages))
-  }, [pages])
+    if (hasLoadedFromCloud && pages.length > 0) {
+      localStorage.setItem('cms_pages', JSON.stringify(pages))
+      saveCMSPages(pages)
+    }
+  }, [pages, hasLoadedFromCloud])
 
   useEffect(() => {
-    localStorage.setItem('cms_navigation', JSON.stringify(navigation))
-  }, [navigation])
+    if (hasLoadedFromCloud && navigation.length > 0) {
+      localStorage.setItem('cms_navigation', JSON.stringify(navigation))
+      saveCMSNavigation(navigation)
+    }
+  }, [navigation, hasLoadedFromCloud])
 
   useEffect(() => {
-    localStorage.setItem('cms_cases', JSON.stringify(cases))
-  }, [cases])
+    if (hasLoadedFromCloud && cases.length > 0) {
+      localStorage.setItem('cms_cases', JSON.stringify(cases))
+      saveCMSCases(cases)
+    }
+  }, [cases, hasLoadedFromCloud])
 
   useEffect(() => {
-    localStorage.setItem('cms_testimonials', JSON.stringify(testimonials))
-  }, [testimonials])
+    if (hasLoadedFromCloud && testimonials.length > 0) {
+      localStorage.setItem('cms_testimonials', JSON.stringify(testimonials))
+      saveCMSTestimonials(testimonials)
+    }
+  }, [testimonials, hasLoadedFromCloud])
 
   useEffect(() => {
-    localStorage.setItem('cms_company_logos', JSON.stringify(companyLogos))
-  }, [companyLogos])
+    if (hasLoadedFromCloud && companyLogos.length > 0) {
+      localStorage.setItem('cms_company_logos', JSON.stringify(companyLogos))
+      saveCMSCompanyLogos(companyLogos)
+    }
+  }, [companyLogos, hasLoadedFromCloud])
 
   useEffect(() => {
-    localStorage.setItem('cms_contact_info', JSON.stringify(contactInfo))
-  }, [contactInfo])
+    if (hasLoadedFromCloud && contactInfo.companyName) {
+      localStorage.setItem('cms_contact_info', JSON.stringify(contactInfo))
+      saveCMSContactInfo(contactInfo)
+    }
+  }, [contactInfo, hasLoadedFromCloud])
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     const { data, error } = await supabase.auth.signInWithPassword({
@@ -431,16 +474,22 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       ]
     }
     
-    setPages(prev => [...prev, newPage])
+    setPages(prev => {
+      const newPages = [...prev, newPage]
+      saveCMSPages(newPages)
+      return newPages
+    })
     return newPage
   }
 
   const deletePage = (slug: string) => {
     if (slug === 'home') return
     setPages(prev => {
-      return prev.filter(p => p.slug !== slug && p.parentSlug !== slug)
+      const newPages = prev.filter(p => p.slug !== slug && p.parentSlug !== slug)
+      deleteCMSPage(slug)
+      saveCMSPages(newPages)
+      return newPages
     })
-    setNavigation(prev => prev.filter(item => item.pageSlug !== slug && !item.href?.startsWith(slug)))
   }
 
   const updatePageDetails = (oldSlug: string, title: string, newSlug: string, parentSlug?: string): boolean => {
@@ -450,96 +499,129 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       return false
     }
     
-    setPages(prev => prev.map(p => {
-      if (p.slug === oldSlug) {
-        return { ...p, title, slug: fullNewSlug, parentSlug }
-      }
-      if (p.parentSlug === oldSlug) {
-        return { ...p, parentSlug: fullNewSlug }
-      }
-      return p
-    }))
-    
-    setNavigation(prev => prev.map(item => {
-      if (item.pageSlug === oldSlug) {
-        return { ...item, href: `/${fullNewSlug}`, pageSlug: fullNewSlug }
-      }
-      if (item.children) {
-        return {
-          ...item,
-          children: item.children.map(child => {
-            if (child.pageSlug === oldSlug) {
-              return { ...child, href: `/${fullNewSlug}`, pageSlug: fullNewSlug }
-            }
-            return child
-          })
+    setPages(prev => {
+      const newPages = prev.map(p => {
+        if (p.slug === oldSlug) {
+          return { ...p, title, slug: fullNewSlug, parentSlug }
         }
-      }
-      return item
-    }))
+        if (p.parentSlug === oldSlug) {
+          return { ...p, parentSlug: fullNewSlug }
+        }
+        return p
+      })
+      saveCMSPages(newPages)
+      return newPages
+    })
+    
+    setNavigation(prev => {
+      const newNav = prev.map(item => {
+        if (item.pageSlug === oldSlug) {
+          return { ...item, href: `/${fullNewSlug}`, pageSlug: fullNewSlug }
+        }
+        if (item.children) {
+          return {
+            ...item,
+            children: item.children.map(child => {
+              if (child.pageSlug === oldSlug) {
+                return { ...child, href: `/${fullNewSlug}`, pageSlug: fullNewSlug }
+              }
+              return child
+            })
+          }
+        }
+        return item
+      })
+      saveCMSNavigation(newNav)
+      return newNav
+    })
     
     return true
   }
 
   const updatePage = (slug: string, blocks: CMSBlock[]) => {
-    setPages(prev => prev.map(p => p.slug === slug ? { ...p, blocks } : p))
+    setPages(prev => {
+      const newPages = prev.map(p => p.slug === slug ? { ...p, blocks } : p)
+      saveCMSPages(newPages)
+      return newPages
+    })
   }
 
   const updatePageMeta = (slug: string, meta: { title?: string; description?: string }) => {
-    setPages(prev => prev.map(p => 
-      p.slug === slug ? { ...p, meta: { ...p.meta, ...meta } } : p
-    ))
+    setPages(prev => {
+      const newPages = prev.map(p => 
+        p.slug === slug ? { ...p, meta: { ...p.meta, ...meta } } : p
+      )
+      saveCMSPages(newPages)
+      return newPages
+    })
   }
 
   const addBlock = (pageSlug: string, block: CMSBlock, index?: number) => {
-    setPages(prev => prev.map(p => {
-      if (p.slug === pageSlug) {
-        const newBlocks = [...p.blocks]
-        if (index !== undefined) {
-          newBlocks.splice(index, 0, block)
-        } else {
-          newBlocks.push(block)
+    setPages(prev => {
+      const newPages = prev.map(p => {
+        if (p.slug === pageSlug) {
+          const newBlocks = [...p.blocks]
+          if (index !== undefined) {
+            newBlocks.splice(index, 0, block)
+          } else {
+            newBlocks.push(block)
+          }
+          return { ...p, blocks: newBlocks }
         }
-        return { ...p, blocks: newBlocks }
-      }
-      return p
-    }))
+        return p
+      })
+      saveCMSPages(newPages)
+      return newPages
+    })
   }
 
   const removeBlock = (pageSlug: string, blockId: string) => {
-    setPages(prev => prev.map(p => {
-      if (p.slug === pageSlug) {
-        return { ...p, blocks: p.blocks.filter(b => b.id !== blockId) }
-      }
-      return p
-    }))
+    setPages(prev => {
+      const newPages = prev.map(p => {
+        if (p.slug === pageSlug) {
+          return { ...p, blocks: p.blocks.filter(b => b.id !== blockId) }
+        }
+        return p
+      })
+      saveCMSPages(newPages)
+      return newPages
+    })
   }
 
   const moveBlock = (pageSlug: string, fromIndex: number, toIndex: number) => {
-    setPages(prev => prev.map(p => {
-      if (p.slug === pageSlug) {
-        const newBlocks = [...p.blocks]
-        const [removed] = newBlocks.splice(fromIndex, 1)
-        newBlocks.splice(toIndex, 0, removed)
-        return { ...p, blocks: newBlocks }
-      }
-      return p
-    }))
+    setPages(prev => {
+      const newPages = prev.map(p => {
+        if (p.slug === pageSlug) {
+          const newBlocks = [...p.blocks]
+          const [removed] = newBlocks.splice(fromIndex, 1)
+          newBlocks.splice(toIndex, 0, removed)
+          return { ...p, blocks: newBlocks }
+        }
+        return p
+      })
+      saveCMSPages(newPages)
+      return newPages
+    })
   }
 
   const updateBlockContent = (pageSlug: string, blockId: string, content: Record<string, any>) => {
-    setPages(prev => prev.map(p => {
-      if (p.slug === pageSlug) {
-        return {
-          ...p,
-          blocks: p.blocks.map(b => b.id === blockId ? { ...b, content: { ...b.content, ...content } } : b)
+    setPages(prev => {
+      const newPages = prev.map(p => {
+        if (p.slug === pageSlug) {
+          return {
+            ...p,
+            blocks: p.blocks.map(b => b.id === blockId ? { ...b, content: { ...b.content, ...content } } : b)
+          }
         }
-      }
-      return p
-    }))
+        return p
+      })
+      saveCMSPages(newPages)
+      return newPages
+    })
   }
 
   const updateNavigation = (nav: NavItem[]) => {
+    saveCMSNavigation(nav)
     setNavigation(nav)
   }
 
@@ -550,6 +632,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     }
     
     setNavigation(prev => {
+      let newNav: NavItem[]
       if (parentNavId) {
         const parentIndex = prev.findIndex(i => i.id === parentNavId)
         if (parentIndex !== -1) {
@@ -562,15 +645,25 @@ export function CMSProvider({ children }: { children: ReactNode }) {
               { ...normalizedItem, parentNavId }
             ]
           }
-          return prev.map((navItem, index) => index === parentIndex ? updatedParent : navItem)
+          newNav = prev.map((navItem, index) => index === parentIndex ? updatedParent : navItem)
+        } else {
+          newNav = [...prev, normalizedItem]
         }
+      } else {
+        newNav = [...prev, normalizedItem]
       }
-      return [...prev, normalizedItem]
+      saveCMSNavigation(newNav)
+      return newNav
     })
   }
 
   const removeNavItem = (itemId: string) => {
-    setNavigation(prev => prev.filter(item => item.id !== itemId))
+    setNavigation(prev => {
+      const newNav = prev.filter(item => item.id !== itemId)
+      deleteCMSNavigation(itemId)
+      saveCMSNavigation(newNav)
+      return newNav
+    })
   }
 
   const moveNavItem = (fromIndex: number, toIndex: number) => {
@@ -578,6 +671,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       const newNav = [...prev]
       const [removed] = newNav.splice(fromIndex, 1)
       newNav.splice(toIndex, 0, removed)
+      saveCMSNavigation(newNav)
       return newNav
     })
   }
@@ -589,6 +683,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     }
     
     setNavigation(prev => {
+      let newNav: NavItem[]
       if (updates.parentNavId) {
         const item = prev.find(i => i.id === itemId)
         if (!item) return prev
@@ -612,25 +707,30 @@ export function CMSProvider({ children }: { children: ReactNode }) {
           ]
         }
         
-        return withoutItem.map(i => i.id === updates.parentNavId ? updatedParent : i)
+        newNav = withoutItem.map(i => i.id === updates.parentNavId ? updatedParent : i)
       } else {
-        return prev.map(item => item.id === itemId ? { ...item, ...normalizedUpdates } : item)
+        newNav = prev.map(item => item.id === itemId ? { ...item, ...normalizedUpdates } : item)
       }
+      saveCMSNavigation(newNav)
+      return newNav
     })
   }
 
   const removeNavItemFromParent = (itemId: string) => {
-    setNavigation(prev => prev.map(item => {
-      if (item.children?.some(c => c.id === itemId)) {
-        const childItem = item.children?.find(c => c.id === itemId)
-        return {
-          ...item,
-          children: item.children?.filter(c => c.id !== itemId),
-          type: (item.children?.length || 0) <= 1 ? 'link' as const : item.type
+    setNavigation(prev => {
+      const newNav = prev.map(item => {
+        if (item.children?.some(c => c.id === itemId)) {
+          return {
+            ...item,
+            children: item.children?.filter(c => c.id !== itemId),
+            type: (item.children?.length || 0) <= 1 ? 'link' as const : item.type
+          }
         }
-      }
-      return item
-    }))
+        return item
+      })
+      saveCMSNavigation(newNav)
+      return newNav
+    })
   }
 
   const moveNavItemToParent = (childId: string, newParentId?: string) => {
@@ -656,8 +756,9 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         href: child.href?.startsWith('/') ? child.href : `/${child.href || ''}`
       }
 
+      let newNav: NavItem[]
       if (newParentId) {
-        return withoutChild.map(item => {
+        newNav = withoutChild.map(item => {
           if (item.id === newParentId) {
             return {
               ...item,
@@ -671,61 +772,98 @@ export function CMSProvider({ children }: { children: ReactNode }) {
           return item
         })
       } else {
-        return [...withoutChild, { ...child, parentNavId: undefined }]
+        newNav = [...withoutChild, { ...child, parentNavId: undefined }]
       }
+      saveCMSNavigation(newNav)
+      return newNav
     })
   }
 
   const moveChildItem = (parentId: string, fromIndex: number, toIndex: number) => {
-    setNavigation(prev => prev.map(item => {
-      if (item.id === parentId && item.children) {
-        const newChildren = [...item.children]
-        const [removed] = newChildren.splice(fromIndex, 1)
-        newChildren.splice(toIndex, 0, removed)
-        return { ...item, children: newChildren }
-      }
-      return item
-    }))
+    setNavigation(prev => {
+      const newNav = prev.map(item => {
+        if (item.id === parentId && item.children) {
+          const newChildren = [...item.children]
+          const [removed] = newChildren.splice(fromIndex, 1)
+          newChildren.splice(toIndex, 0, removed)
+          return { ...item, children: newChildren }
+        }
+        return item
+      })
+      saveCMSNavigation(newNav)
+      return newNav
+    })
   }
 
   const updateContactInfo = (info: Partial<ContactInfo>) => {
-    setContactInfo(prev => ({ ...prev, ...info }))
+    setContactInfo(prev => {
+      const newInfo = { ...prev, ...info }
+      saveCMSContactInfo(newInfo)
+      return newInfo
+    })
   }
 
   const addCase = (caseItem: Case) => {
-    setCases(prev => [...prev, caseItem])
+    setCases(prev => {
+      const newCases = [...prev, caseItem]
+      saveCMSCases(newCases)
+      return newCases
+    })
   }
 
   const updateCase = (id: string, updates: Partial<Case>) => {
-    setCases(prev => prev.map(c => c.id === id ? { ...c, ...updates } : c))
+    setCases(prev => {
+      const newCases = prev.map(c => c.id === id ? { ...c, ...updates } : c)
+      saveCMSCases(newCases)
+      return newCases
+    })
   }
 
   const deleteCase = (id: string) => {
     setCases(prev => prev.filter(c => c.id !== id))
+    deleteCMSCase(id)
   }
 
   const addTestimonial = (testimonial: Testimonial) => {
-    setTestimonials(prev => [...prev, testimonial])
+    setTestimonials(prev => {
+      const newTestimonials = [...prev, testimonial]
+      saveCMSTestimonials(newTestimonials)
+      return newTestimonials
+    })
   }
 
   const updateTestimonial = (id: string, updates: Partial<Testimonial>) => {
-    setTestimonials(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
+    setTestimonials(prev => {
+      const newTestimonials = prev.map(t => t.id === id ? { ...t, ...updates } : t)
+      saveCMSTestimonials(newTestimonials)
+      return newTestimonials
+    })
   }
 
   const deleteTestimonial = (id: string) => {
     setTestimonials(prev => prev.filter(t => t.id !== id))
+    deleteCMSTestimonial(id)
   }
 
   const addCompanyLogo = (logo: CompanyLogo) => {
-    setCompanyLogos(prev => [...prev, logo])
+    setCompanyLogos(prev => {
+      const newLogos = [...prev, logo]
+      saveCMSCompanyLogos(newLogos)
+      return newLogos
+    })
   }
 
   const updateCompanyLogo = (id: string, updates: Partial<CompanyLogo>) => {
-    setCompanyLogos(prev => prev.map(l => l.id === id ? { ...l, ...updates } : l))
+    setCompanyLogos(prev => {
+      const newLogos = prev.map(l => l.id === id ? { ...l, ...updates } : l)
+      saveCMSCompanyLogos(newLogos)
+      return newLogos
+    })
   }
 
   const deleteCompanyLogo = (id: string) => {
     setCompanyLogos(prev => prev.filter(l => l.id !== id))
+    deleteCMSCompanyLogo(id)
   }
 
   const generatePassword = (): string => {
