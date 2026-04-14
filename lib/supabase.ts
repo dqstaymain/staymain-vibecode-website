@@ -96,7 +96,16 @@ export async function loadCMSPages(): Promise<any[] | null> {
 
 export async function saveCMSNavigation(navigation: any[]): Promise<boolean> {
   try {
-    const { error } = await supabase.from('cms_navigation').upsert(navigation)
+    const formatted = navigation.map(item => ({
+      id: item.id,
+      label: item.label,
+      href: item.href || null,
+      page_slug: item.pageSlug || null,
+      parent_nav_id: item.parentNavId || null,
+      children: item.children || null,
+      new_tab: item.newTab || null
+    }))
+    const { error } = await supabase.from('cms_navigation').upsert(formatted, { onConflict: 'id' })
     if (error) throw error
     return true
   } catch (error) {
@@ -107,9 +116,17 @@ export async function saveCMSNavigation(navigation: any[]): Promise<boolean> {
 
 export async function loadCMSNavigation(): Promise<any[] | null> {
   try {
-    const { data, error } = await supabase.from('cms_navigation').select('*')
-    if (error || !data) return null
-    return data
+    const { data, error } = await supabase.from('cms_navigation').select('*').order('id')
+    if (error || !data || data.length === 0) return null
+    return data.map(item => ({
+      id: item.id,
+      label: item.label,
+      href: item.href,
+      pageSlug: item.page_slug,
+      parentNavId: item.parent_nav_id,
+      children: item.children || undefined,
+      newTab: item.new_tab || undefined
+    }))
   } catch (error) {
     console.error('Error loading navigation:', error)
     return null

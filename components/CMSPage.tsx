@@ -8,8 +8,18 @@ import SEOMeta from '@/components/SEOMeta'
 import Link from 'next/link'
 
 export default function CMSPage({ slug }: { slug: string }) {
-  const { pages } = useCMS()
+  const { pages, supabaseReady } = useCMS()
   const page = pages.find(p => p.slug === slug)
+
+  if (!supabaseReady) {
+    return (
+      <main className="min-h-screen flex items-center justify-center">
+        <div className="animate-pulse">
+          <div className="h-8 w-32 bg-slate-200 dark:bg-slate-700 rounded"></div>
+        </div>
+      </main>
+    )
+  }
 
   if (!page || page.blocks.length === 0) {
     return (

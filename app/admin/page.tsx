@@ -38,13 +38,13 @@ import {
   Quote,
   Users,
   Folder,
-  Upload,
   Film,
   Music,
   Image as ImageIcon,
   Copy,
   ExternalLink,
-  Loader2
+  Loader2,
+  Upload
 } from 'lucide-react'
 import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo } from '@/lib/cms'
 import { uploadImage } from '@/lib/supabase'
@@ -61,7 +61,7 @@ const blockTypes = [
 ]
 
 function Dashboard() {
-  const { pages, navigation, users, contactInfo, isAuthenticated, currentUser, supabaseReady, logout, createPage, updatePageDetails, deletePage, addBlock, removeBlock, moveBlock, updateBlockContent, updatePageMeta, moveNavItem, updateNavItem, addNavItem, removeNavItem, removeNavItemFromParent, updateNavigation, moveNavItemToParent, moveChildItem, addUser, updateUser, updateUserPassword, deleteUser, generatePassword, fetchUsers, updateContactInfo, cases, testimonials, companyLogos, addCase, updateCase, deleteCase, addTestimonial, updateTestimonial, deleteTestimonial, addCompanyLogo, updateCompanyLogo, deleteCompanyLogo } = useCMS()
+  const { pages, navigation, users, contactInfo, isAuthenticated, currentUser, supabaseReady, logout, createPage, updatePageDetails, deletePage, addBlock, removeBlock, moveBlock, updateBlockContent, updatePageMeta, moveNavItem, updateNavItem, addNavItem, removeNavItem, removeNavItemFromParent, updateNavigation, moveNavItemToParent, moveChildItem, convertToDropdown, addUser, updateUser, updateUserPassword, deleteUser, generatePassword, fetchUsers, updateContactInfo, cases, testimonials, companyLogos, addCase, updateCase, deleteCase, addTestimonial, updateTestimonial, deleteTestimonial, addCompanyLogo, updateCompanyLogo, deleteCompanyLogo } = useCMS()
   
   useEffect(() => {
     if (supabaseReady && users.length === 0) {
@@ -82,6 +82,7 @@ function Dashboard() {
   const [navDragIndex, setNavDragIndex] = useState<number | null>(null)
   const [navDragOverIndex, setNavDragOverIndex] = useState<number | null>(null)
   const [navDragOverParent, setNavDragOverParent] = useState<string | null>(null)
+  const [navDragOverItemId, setNavDragOverItemId] = useState<string | null>(null)
   const [childDragParent, setChildDragParent] = useState<string | null>(null)
   const [childDragIndex, setChildDragIndex] = useState<number | null>(null)
   const [childDragOverIndex, setChildDragOverIndex] = useState<number | null>(null)
@@ -92,6 +93,7 @@ function Dashboard() {
   const [newPageSlug, setNewPageSlug] = useState('')
   const [newPageParent, setNewPageParent] = useState<string>('')
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null)
+  const [deleteConfirmType, setDeleteConfirmType] = useState<string>('page')
   const [editingPageDetails, setEditingPageDetails] = useState<{ slug: string; title: string; pageSlug: string; parentSlug: string } | null>(null)
   const [showAddNavItem, setShowAddNavItem] = useState(false)
   const [newNavItemParent, setNewNavItemParent] = useState<string>('')
@@ -387,6 +389,9 @@ function Dashboard() {
             </div>
             
             <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+              <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
+                Indhold
+              </h2>
               <button
                 onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(true); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setContactForm({ ...contactInfo, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '' }) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
@@ -398,12 +403,6 @@ function Dashboard() {
                 <Settings size={18} />
                 <span className="text-sm font-medium">Generelle oplysninger</span>
               </button>
-            </div>
-            
-            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-              <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
-                Indhold
-              </h2>
               <button
                 onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(true); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
@@ -487,7 +486,7 @@ function Dashboard() {
                   Rediger navigation
                 </h2>
                 <p className="text-sm text-slate-500 dark:text-slate-400">
-                  Træk elementer for at ændre rækkefølgen. Træk et element ind i et andet for at lave en dropdown.
+                  Træk elementer for at ændre rækkefølgen.
                 </p>
               </div>
               
@@ -512,25 +511,39 @@ function Dashboard() {
                             setNavDragIndex(null)
                             setNavDragOverIndex(null)
                             setNavDragOverParent(null)
+                            setNavDragOverItemId(null)
                           }}
                           onDragOver={(e) => {
                             e.preventDefault()
                             if (navDragIndex !== null && navDragIndex !== index) {
                               setNavDragOverIndex(index)
+                              if (item.type === 'link') {
+                                setNavDragOverItemId(item.id)
+                              }
                             }
                           }}
                           onDrop={(e) => {
                             e.preventDefault()
                             if (navDragIndex !== null && navDragIndex !== index) {
-                              moveNavItem(navDragIndex, index)
+                              const draggedItem = navigation[navDragIndex]
+                              if (draggedItem && draggedItem.id !== item.id) {
+                                if (item.type === 'dropdown') {
+                                  moveNavItemToParent(draggedItem.id, item.id)
+                                } else {
+                                  convertToDropdown(item.id, draggedItem.id)
+                                }
+                              }
                             }
                             setNavDragIndex(null)
                             setNavDragOverIndex(null)
+                            setNavDragOverItemId(null)
                           }}
                           className={`bg-white dark:bg-slate-800 rounded-xl border-2 p-4 transition-all ${
                             isDropTarget
                               ? 'border-blue-500 shadow-lg'
-                              : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600'
+                              : navDragOverItemId === item.id
+                                ? 'border-2 border-dashed border-purple-500 bg-purple-50 dark:bg-purple-900/20'
+                                : 'border-slate-200 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-600'
                           } ${navDragIndex === index ? 'opacity-50' : ''}`}
                         >
                           <div className="flex items-center justify-between">
@@ -564,7 +577,7 @@ function Dashboard() {
                                 </span>
                               )}
                               <button
-                                onClick={() => removeNavItem(item.id)}
+                                onClick={() => { setDeleteConfirm(item.id); setDeleteConfirmType('nav') }}
                                 className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                                 title="Slet"
                               >
@@ -683,40 +696,10 @@ function Dashboard() {
                               </div>
                             </div>
                           )}
-                          
-                          {isParentTarget && (
-                            <div className="border-t-2 border-purple-500 p-3 bg-purple-50 dark:bg-purple-900/20 text-center mt-4">
-                              <p className="text-sm text-purple-600 dark:text-purple-400 font-medium">
-                                Slip her for at lave "{item.label}" til en dropdown
-                              </p>
-                            </div>
-                          )}
                         </div>
                       </div>
                     )
                   })}
-                  
-                  <div
-                    onDragOver={(e) => { e.preventDefault(); setNavDragOverIndex(navigation.length) }}
-                    onDrop={() => {
-                      if (navDragIndex !== null && navDragIndex !== navigation.length) {
-                        moveNavItem(navDragIndex, navigation.length)
-                      }
-                      setNavDragIndex(null)
-                      setNavDragOverIndex(null)
-                    }}
-                    className={`py-4 border-2 border-dashed rounded-xl text-center transition-colors ${
-                      navDragOverIndex === navigation.length && navDragOverParent === null
-                        ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20 text-blue-500'
-                        : 'border-slate-300 dark:border-slate-600 text-slate-500'
-                    }`}
-                  >
-                    <p className="text-sm">
-                      {navDragOverIndex === navigation.length && navDragOverParent === null
-                        ? 'Slip her for at flytte til hovedmenu'
-                        : 'Træk hertil for at tilføje'}
-                    </p>
-                  </div>
                   
                   <button
                     onClick={() => setShowAddNavItem(true)}
@@ -795,10 +778,10 @@ function Dashboard() {
                       <button
                         type="button"
                         onClick={() => { setMediaPickerTarget('logo'); setShowMediaPicker(true) }}
-                        className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                        className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                       >
                         <Folder size={18} className="mr-2 text-slate-400" />
-                        <span className="text-slate-500">Vælg fra bibliotek</span>
+                        <span className="text-slate-500">Mediebibliotek</span>
                       </button>
                       <label className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
                         <input type="file" className="hidden" accept="image/*" onChange={async e => {
@@ -811,7 +794,7 @@ function Dashboard() {
                           }
                         }} />
                         <Upload size={18} className="mr-2 text-slate-400" />
-                        <span className="text-slate-500">{uploadingLogo ? 'Uploader...' : 'Upload ny'}</span>
+                        <span className="text-slate-500">{uploadingLogo ? 'Uploader...' : 'Upload fra pc'}</span>
                       </label>
                     </div>
                     {contactForm.logo && (
@@ -832,10 +815,10 @@ function Dashboard() {
                       <button
                         type="button"
                         onClick={() => { setMediaPickerTarget('favicon'); setShowMediaPicker(true) }}
-                        className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                        className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                       >
                         <Folder size={18} className="mr-2 text-slate-400" />
-                        <span className="text-slate-500">Vælg fra bibliotek</span>
+                        <span className="text-slate-500">Mediebibliotek</span>
                       </button>
                       <label className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
                         <input type="file" className="hidden" accept="image/*" onChange={async e => {
@@ -848,7 +831,7 @@ function Dashboard() {
                           }
                         }} />
                         <Upload size={18} className="mr-2 text-slate-400" />
-                        <span className="text-slate-500">{uploadingFavicon ? 'Uploader...' : 'Upload ny'}</span>
+                        <span className="text-slate-500">{uploadingFavicon ? 'Uploader...' : 'Upload fra pc'}</span>
                       </label>
                     </div>
                     {contactForm.favicon && (
@@ -876,9 +859,7 @@ function Dashboard() {
                       const newCase: Case = {
                         id: `case-${Date.now()}`,
                         title: 'Ny case',
-                        description: '',
-                        image: '',
-                        tags: []
+                        image: ''
                       }
                       addCase(newCase)
                       setEditingCase(newCase.id)
@@ -903,7 +884,6 @@ function Dashboard() {
                           <img src={caseItem.image} alt={caseItem.title} className="w-full h-32 object-cover rounded-lg mb-3" />
                         )}
                         <h3 className="font-semibold text-slate-900 dark:text-white">{caseItem.title}</h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 line-clamp-2">{caseItem.description}</p>
                         <div className="flex gap-2 mt-3">
                           <button
                             onClick={() => setEditingCase(caseItem.id)}
@@ -912,11 +892,7 @@ function Dashboard() {
                             Rediger
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm('Er du sikker på at du vil slette denne case?')) {
-                                deleteCase(caseItem.id)
-                              }
-                            }}
+                            onClick={() => { setDeleteConfirm(caseItem.id); setDeleteConfirmType('case') }}
                             className="px-3 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                           >
                             <Trash2 size={18} />
@@ -980,11 +956,7 @@ function Dashboard() {
                                 <Pencil size={18} />
                               </button>
                               <button
-                                onClick={() => {
-                                  if (confirm('Er du sikker på at du vil slette denne udtalelse?')) {
-                                    deleteTestimonial(testimonial.id)
-                                  }
-                                }}
+                                onClick={() => { setDeleteConfirm(testimonial.id); setDeleteConfirmType('testimonial') }}
                                 className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                               >
                                 <Trash2 size={18} />
@@ -1044,11 +1016,7 @@ function Dashboard() {
                             Rediger
                           </button>
                           <button
-                            onClick={() => {
-                              if (confirm('Er du sikker på at du vil slette dette logo?')) {
-                                deleteCompanyLogo(logo.id)
-                              }
-                            }}
+                            onClick={() => { setDeleteConfirm(logo.id); setDeleteConfirmType('logo') }}
                             className="px-2 py-1 text-xs text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded transition-colors"
                           >
                             <Trash2 size={14} />
@@ -1327,10 +1295,15 @@ function Dashboard() {
                 <Trash2 size={32} className="text-red-500" />
               </div>
               <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
-                Slet side?
+                {deleteConfirmType === 'nav' ? 'Slet navigationspunkt?' : 
+                 deleteConfirmType === 'child' ? 'Slet underpunkt?' :
+                 deleteConfirmType === 'case' ? 'Slet case?' :
+                 deleteConfirmType === 'testimonial' ? 'Slet udtalelse?' :
+                 deleteConfirmType === 'logo' ? 'Slet logo?' :
+                 deleteConfirmType === 'user' ? 'Slet bruger?' : 'Slet side?'}
               </h3>
               <p className="text-slate-600 dark:text-slate-400">
-                Er du sikker på at du vil slette denne side? Denne handling kan ikke fortrydes.
+                Er du sikker på at du vil slette dette? Denne handling kan ikke fortrydes.
               </p>
             </div>
             <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
@@ -1342,15 +1315,31 @@ function Dashboard() {
               </button>
               <button
                 onClick={() => {
-                  deletePage(deleteConfirm)
-                  if (selectedPage === deleteConfirm) {
-                    setSelectedPage(pages.find(p => p.slug !== deleteConfirm)?.slug || null)
+                  if (deleteConfirmType === 'nav' || deleteConfirmType === 'child') {
+                    removeNavItem(deleteConfirm)
+                  } else if (deleteConfirmType === 'case') {
+                    deleteCase(deleteConfirm)
+                    setEditingCase(null)
+                  } else if (deleteConfirmType === 'testimonial') {
+                    deleteTestimonial(deleteConfirm)
+                    setEditingTestimonial(null)
+                  } else if (deleteConfirmType === 'logo') {
+                    deleteCompanyLogo(deleteConfirm)
+                    setEditingLogo(null)
+                  } else if (deleteConfirmType === 'user') {
+                    deleteUser(deleteConfirm)
+                    setEditingUser(null)
+                  } else {
+                    deletePage(deleteConfirm)
+                    if (selectedPage === deleteConfirm) {
+                      setSelectedPage(pages.find(p => p.slug !== deleteConfirm)?.slug || null)
+                    }
                   }
                   setDeleteConfirm(null)
                 }}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
               >
-                Slet side
+                Slet
               </button>
             </div>
           </div>
@@ -1410,8 +1399,8 @@ function Dashboard() {
           pages={pages}
           navigation={navigation}
           onClose={() => setShowAddNavItem(false)}
-          onSave={(item, parentId) => {
-            addNavItem(item, parentId)
+          onSave={(item) => {
+            addNavItem(item)
             setShowAddNavItem(false)
           }}
         />
@@ -1483,10 +1472,8 @@ function Dashboard() {
             setEditingCase(null)
           }}
           onDelete={() => {
-            if (confirm('Er du sikker på at du vil slette denne case?')) {
-              deleteCase(editingCase)
-              setEditingCase(null)
-            }
+            setDeleteConfirm(editingCase)
+            setDeleteConfirmType('case')
           }}
         />
       )}
@@ -1500,10 +1487,8 @@ function Dashboard() {
             setEditingTestimonial(null)
           }}
           onDelete={() => {
-            if (confirm('Er du sikker på at du vil slette denne udtalelse?')) {
-              deleteTestimonial(editingTestimonial)
-              setEditingTestimonial(null)
-            }
+            setDeleteConfirm(editingTestimonial)
+            setDeleteConfirmType('testimonial')
           }}
         />
       )}
@@ -1530,10 +1515,8 @@ function Dashboard() {
             setEditingLogo(null)
           }}
           onDelete={() => {
-            if (confirm('Er du sikker på at du vil slette dette logo?')) {
-              deleteCompanyLogo(editingLogo)
-              setEditingLogo(null)
-            }
+            setDeleteConfirm(editingLogo)
+            setDeleteConfirmType('logo')
           }}
         />
       )}
@@ -1672,16 +1655,26 @@ function BlockEditModal({ block, onClose, onSave }: { block: CMSBlock; onClose: 
 
 function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pages: any[]; onClose: () => void; onSave: (updates: Partial<NavItem>) => void }) {
   const [label, setLabel] = useState(item.label)
-  const [type, setType] = useState<'link' | 'dropdown'>(item.type)
   const [href, setHref] = useState(item.href || '')
   const [pageSlug, setPageSlug] = useState(item.pageSlug || '')
+  const [newTab, setNewTab] = useState(item.newTab || false)
+
+  const handlePageChange = (slug: string) => {
+    setPageSlug(slug)
+    if (slug === '' || slug === 'forside') {
+      setHref('/')
+    } else {
+      setHref(`/${slug}`)
+    }
+  }
 
   const handleSave = () => {
     onSave({
       label,
-      type,
-      href: type === 'link' ? href : undefined,
-      pageSlug: pageSlug || undefined
+      type: 'link',
+      href: href || undefined,
+      pageSlug: pageSlug || undefined,
+      newTab: newTab || undefined
     })
   }
 
@@ -1703,43 +1696,38 @@ function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pag
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Type</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Link</label>
+            <input
+              type="text"
+              value={href}
+              onChange={e => setHref(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              placeholder="/min-side"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Eller vælg side</label>
             <select
-              value={type}
-              onChange={e => setType(e.target.value as 'link' | 'dropdown')}
+              value={pageSlug}
+              onChange={e => handlePageChange(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
             >
-              <option value="link">Link</option>
-              <option value="dropdown">Dropdown</option>
+              <option value="">Vælg en side...</option>
+              {pages.map(p => (
+                <option key={p.slug} value={p.slug}>{p.title}</option>
+              ))}
             </select>
           </div>
-          {type === 'link' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Link</label>
-                <input
-                  type="text"
-                  value={href}
-                  onChange={e => setHref(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                  placeholder="/min-side"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Eller vælg side</label>
-                <select
-                  value={pageSlug}
-                  onChange={e => setPageSlug(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                >
-                  <option value="">Vælg en side...</option>
-                  {pages.map(p => (
-                    <option key={p.slug} value={p.slug}>{p.title}</option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="editNewTab"
+              checked={newTab}
+              onChange={e => setNewTab(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600"
+            />
+            <label htmlFor="editNewTab" className="text-sm text-slate-700 dark:text-slate-300">Åbn i ny fane</label>
+          </div>
         </div>
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
           <button
@@ -1900,22 +1888,31 @@ function PageEditModal({ page, pages, onClose, onSave }: { page: { slug: string;
   )
 }
 
-function AddNavItemModal({ pages, navigation, onClose, onSave }: { pages: any[]; navigation: NavItem[]; onClose: () => void; onSave: (item: NavItem, parentId?: string) => void }) {
+function AddNavItemModal({ pages, navigation, onClose, onSave }: { pages: any[]; navigation: NavItem[]; onClose: () => void; onSave: (item: NavItem) => void }) {
   const [label, setLabel] = useState('')
-  const [type, setType] = useState<'link' | 'dropdown'>('link')
   const [href, setHref] = useState('')
   const [pageSlug, setPageSlug] = useState('')
-  const [parentId, setParentId] = useState('')
+  const [newTab, setNewTab] = useState(false)
+
+  const handlePageChange = (slug: string) => {
+    setPageSlug(slug)
+    if (slug === '' || slug === 'forside') {
+      setHref('/')
+    } else {
+      setHref(`/${slug}`)
+    }
+  }
 
   const handleSave = () => {
     const newItem: NavItem = {
       id: `nav-${Date.now()}`,
       label,
-      type,
-      href: type === 'link' ? href : undefined,
-      pageSlug: pageSlug || undefined
+      type: 'link',
+      href: href || undefined,
+      pageSlug: pageSlug || undefined,
+      newTab: newTab || undefined
     }
-    onSave(newItem, parentId || undefined)
+    onSave(newItem)
   }
 
   return (
@@ -1936,55 +1933,37 @@ function AddNavItemModal({ pages, navigation, onClose, onSave }: { pages: any[];
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Type</label>
-            <select
-              value={type}
-              onChange={e => setType(e.target.value as 'link' | 'dropdown')}
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Link</label>
+            <input
+              type="text"
+              value={href}
+              onChange={e => setHref(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-            >
-              <option value="link">Link</option>
-              <option value="dropdown">Dropdown</option>
-            </select>
+              placeholder="/min-side"
+            />
           </div>
-          {type === 'link' && (
-            <>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Link</label>
-                <input
-                  type="text"
-                  value={href}
-                  onChange={e => setHref(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                  placeholder="/min-side"
-                />
-              </div>
-              <div>
-                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Eller vælg side</label>
-                <select
-                  value={pageSlug}
-                  onChange={e => setPageSlug(e.target.value)}
-                  className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
-                >
-                  <option value="">Vælg en side...</option>
-                  {pages.map(p => (
-                    <option key={p.slug} value={p.slug}>{p.title}</option>
-                  ))}
-                </select>
-              </div>
-            </>
-          )}
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Parent (valgfrit)</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Eller vælg side</label>
             <select
-              value={parentId}
-              onChange={e => setParentId(e.target.value)}
+              value={pageSlug}
+              onChange={e => handlePageChange(e.target.value)}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
             >
-              <option value="">Ingen (hovedmenu)</option>
-              {navigation.filter(n => n.type === 'dropdown').map(n => (
-                <option key={n.id} value={n.id}>{n.label}</option>
+              <option value="">Vælg en side...</option>
+              {pages.map(p => (
+                <option key={p.slug} value={p.slug}>{p.title}</option>
               ))}
             </select>
+          </div>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="newTab"
+              checked={newTab}
+              onChange={e => setNewTab(e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600"
+            />
+            <label htmlFor="newTab" className="text-sm text-slate-700 dark:text-slate-300">Åbn i ny fane</label>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
@@ -2180,7 +2159,7 @@ function EditUserModal({ user, onClose, onSaveEmail, onSavePassword, onDelete, u
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-between">
           {usersLength > 1 && (
             <button 
-              onClick={handleDelete} 
+              onClick={onDelete}
               disabled={loading}
               className="px-4 py-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg transition-colors disabled:opacity-50"
             >
@@ -2252,19 +2231,27 @@ function CreatedUserModal({ email, password, onClose }: { email: string; passwor
 
 function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case; onClose: () => void; onSave: (updates: Partial<Case>) => void; onDelete: () => void }) {
   const [title, setTitle] = useState(caseItem.title)
-  const [description, setDescription] = useState(caseItem.description)
   const [image, setImage] = useState(caseItem.image)
   const [link, setLink] = useState(caseItem.link || '')
-  const [tags, setTags] = useState(caseItem.tags.join(', '))
+  const [uploading, setUploading] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
+
+  const handleUpload = async (file: File) => {
+    setUploading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await fetch('/api/media', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (data.file?.url) setImage(data.file.url)
+    } catch (error) {
+      console.error('Upload error:', error)
+    }
+    setUploading(false)
+  }
 
   const handleSave = () => {
-    onSave({
-      title,
-      description,
-      image,
-      link: link || undefined,
-      tags: tags.split(',').map(t => t.trim()).filter(Boolean)
-    })
+    onSave({ title, image, link: link || undefined })
     onClose()
   }
 
@@ -2281,31 +2268,29 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
             <input type="text" value={title} onChange={e => setTitle(e.target.value)} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse</label>
-            <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Link (valgfrit)</label>
             <input type="text" value={link} onChange={e => setLink(e.target.value)} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" placeholder="https://..." />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tags (kommasepareret)</label>
-            <input type="text" value={tags} onChange={e => setTags(e.target.value)} className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white" placeholder="Web, Design, Branding" />
-          </div>
-          <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Billede</label>
             {image && <img src={image} alt="Preview" className="w-full h-48 object-cover mb-2 bg-white rounded-lg p-2" />}
-            <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-              <input type="file" className="hidden" accept="image/*" onChange={e => {
-                const file = e.target.files?.[0]
-                if (file) {
-                  const reader = new FileReader()
-                  reader.onloadend = () => setImage(reader.result as string)
-                  reader.readAsDataURL(file)
-                }
-              }} />
-              <span className="text-slate-500">Klik for at vælge billede</span>
-            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowPicker(true)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              >
+                <ImageIcon size={16} className="text-slate-400" />
+                <span className="text-sm text-slate-500">Mediebibliotek</span>
+              </button>
+              <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                <Upload size={16} className="text-slate-400" />
+                <span className="text-sm text-slate-500">{uploading ? 'Uploader...' : 'Upload fra pc'}</span>
+                <input type="file" className="hidden" accept="image/*" onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleUpload(file)
+                }} />
+              </label>
+            </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-3">
@@ -2322,6 +2307,13 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
           </div>
         </div>
       </div>
+
+      {showPicker && (
+        <MediaPickerModal
+          onSelect={(url) => { setImage(url); setShowPicker(false) }}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   )
 }
@@ -2331,6 +2323,22 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
   const [role, setRole] = useState(testimonial.role)
   const [content, setContent] = useState(testimonial.content)
   const [image, setImage] = useState(testimonial.image)
+  const [uploading, setUploading] = useState(false)
+  const [showPicker, setShowPicker] = useState(false)
+
+  const handleUpload = async (file: File) => {
+    setUploading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await fetch('/api/media', { method: 'POST', body: formData })
+      const data = await res.json()
+      if (data.file?.url) setImage(data.file.url)
+    } catch (error) {
+      console.error('Upload error:', error)
+    }
+    setUploading(false)
+  }
 
   const handleSave = () => {
     onSave({ name, role, content, image })
@@ -2360,17 +2368,23 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Billede</label>
             {image && <img src={image} alt={name} className="w-24 h-24 rounded-full object-cover mx-auto mb-2" />}
-            <label className="flex items-center justify-center w-full px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-              <input type="file" className="hidden" accept="image/*" onChange={e => {
-                const file = e.target.files?.[0]
-                if (file) {
-                  const reader = new FileReader()
-                  reader.onloadend = () => setImage(reader.result as string)
-                  reader.readAsDataURL(file)
-                }
-              }} />
-              <span className="text-slate-500">Klik for at vælge billede</span>
-            </label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowPicker(true)}
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+              >
+                <ImageIcon size={16} className="text-slate-400" />
+                <span className="text-sm text-slate-500">Mediebibliotek</span>
+              </button>
+              <label className="flex-1 flex items-center justify-center gap-2 px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                <Upload size={16} className="text-slate-400" />
+                <span className="text-sm text-slate-500">{uploading ? 'Uploader...' : 'Upload fra pc'}</span>
+                <input type="file" className="hidden" accept="image/*" onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleUpload(file)
+                }} />
+              </label>
+            </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-between gap-3">
@@ -2387,6 +2401,13 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
           </div>
         </div>
       </div>
+
+      {showPicker && (
+        <MediaPickerModal
+          onSelect={(url) => { setImage(url); setShowPicker(false) }}
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   )
 }
@@ -2406,6 +2427,7 @@ function MediaLibrary() {
   const [uploading, setUploading] = useState(false)
   const [filter, setFilter] = useState<string>('all')
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
+  const [search, setSearch] = useState('')
 
   useEffect(() => {
     fetchFiles()
@@ -2482,6 +2504,10 @@ function MediaLibrary() {
   const filteredFiles = filter === 'all' 
     ? files 
     : files.filter(f => f.category === filter)
+  
+  const displayedFiles = search 
+    ? filteredFiles.filter(f => f.name.toLowerCase().includes(search.toLowerCase()))
+    : filteredFiles
 
   const getFileIcon = (category: string) => {
     switch (category) {
@@ -2505,21 +2531,14 @@ function MediaLibrary() {
     <div className="space-y-6">
       <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-4">
         <div className="flex items-center justify-between gap-4 mb-4">
-          <div className="flex gap-2">
-            {categories.map(cat => (
-              <button
-                key={cat.id}
-                onClick={() => setFilter(cat.id)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                  filter === cat.id
-                    ? 'bg-blue-500 text-white'
-                    : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
-                }`}
-              >
-                <cat.icon size={14} />
-                {cat.label}
-              </button>
-            ))}
+          <div className="flex-1 max-w-md">
+            <input
+              type="text"
+              placeholder="Søg efter filer..."
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+            />
           </div>
           <label className="flex items-center gap-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg cursor-pointer transition-colors">
             {uploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
@@ -2534,21 +2553,37 @@ function MediaLibrary() {
             />
           </label>
         </div>
+        <div className="flex gap-2">
+          {categories.map(cat => (
+            <button
+              key={cat.id}
+              onClick={() => setFilter(cat.id)}
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
+                filter === cat.id
+                  ? 'bg-blue-500 text-white'
+                  : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'
+              }`}
+            >
+              <cat.icon size={14} />
+              {cat.label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {loading ? (
         <div className="flex items-center justify-center py-12">
           <Loader2 size={32} className="animate-spin text-slate-400" />
         </div>
-      ) : filteredFiles.length === 0 ? (
+      ) : displayedFiles.length === 0 ? (
         <div className="text-center py-12 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700">
           <Folder size={48} className="mx-auto mb-4 text-slate-300" />
-          <p className="text-slate-500">Ingen filer endnu</p>
-          <p className="text-sm text-slate-400 mt-1">Upload billeder, videoer, lyd eller dokumenter</p>
+          <p className="text-slate-500">{search ? 'Ingen filer matcher din søgning' : 'Ingen filer endnu'}</p>
+          {!search && <p className="text-sm text-slate-400 mt-1">Upload billeder, videoer, lyd eller dokumenter</p>}
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
-          {filteredFiles.map((file, index) => (
+          {displayedFiles.map((file, index) => (
             <div
               key={`${file.name}-${index}`}
               className="group bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 overflow-hidden"
@@ -2615,6 +2650,7 @@ function MediaPickerModal({ onSelect, onClose }: MediaPickerModalProps) {
   const [files, setFiles] = useState<MediaFile[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>('image')
+  const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
     fetchFiles()
@@ -2632,7 +2668,26 @@ function MediaPickerModal({ onSelect, onClose }: MediaPickerModalProps) {
     }
   }
 
-  const filteredFiles = files.filter(f => f.category === filter || (filter === 'image' && f.type.startsWith('image/')))
+  const handleUpload = async (file: File) => {
+    setUploading(true)
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const res = await fetch('/api/media', {
+        method: 'POST',
+        body: formData,
+      })
+      const data = await res.json()
+      if (data.file?.url) {
+        setFiles(prev => [data.file, ...prev])
+      }
+    } catch (error) {
+      console.error('Upload error:', error)
+    }
+    setUploading(false)
+  }
+
+  const filteredFiles = files.filter(f => f.category === filter || (filter === 'image' && f.type?.startsWith('image/')))
 
   const categories = [
     { id: 'image', label: 'Billeder', icon: ImageIcon },
@@ -2645,8 +2700,18 @@ function MediaPickerModal({ onSelect, onClose }: MediaPickerModalProps) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4" onClick={onClose}>
       <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Vælg fra mediebibliotek</h3>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">×</button>
+          <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Mediebibliotek</h3>
+          <div className="flex items-center gap-3">
+            <label className="flex items-center gap-2 px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-sm cursor-pointer transition-colors">
+              <Upload size={14} />
+              {uploading ? 'Uploader...' : 'Upload'}
+              <input type="file" className="hidden" accept="image/*,video/*,audio/*,.pdf,.doc,.docx" onChange={e => {
+                const file = e.target.files?.[0]
+                if (file) handleUpload(file)
+              }} />
+            </label>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">×</button>
+          </div>
         </div>
         
         <div className="px-6 py-3 border-b border-slate-200 dark:border-slate-700">
@@ -2762,10 +2827,10 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
               <button
                 type="button"
                 onClick={() => setShowPicker(true)}
-                className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
               >
                 <Folder size={18} className="mr-2 text-slate-400" />
-                <span className="text-slate-500">Vælg fra bibliotek</span>
+                <span className="text-slate-500">Mediebibliotek</span>
               </button>
               <label className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-lg cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
                 <input type="file" className="hidden" accept="image/*" onChange={e => {
@@ -2773,7 +2838,7 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
                   if (file) handleUpload(file)
                 }} />
                 <Upload size={18} className="mr-2 text-slate-400" />
-                <span className="text-slate-500">{uploading ? 'Uploader...' : 'Upload ny'}</span>
+                <span className="text-slate-500">{uploading ? 'Uploader...' : 'Upload fra pc'}</span>
               </label>
             </div>
           </div>

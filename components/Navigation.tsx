@@ -110,7 +110,7 @@ export default function Navigation() {
 
             <div className="hidden lg:flex items-center gap-6 xl:gap-8">
               {navigation.map((item) => (
-                item.type === 'dropdown' ? (
+                item.children && item.children.length > 0 ? (
                   <div key={item.id} className="relative group" ref={dropdownRef}>
                     <button
                       onClick={() => setDropdownOpen(dropdownOpen === item.id ? null : item.id)}
@@ -137,10 +137,12 @@ export default function Navigation() {
                           <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-slate-900 border-l border-t border-slate-100 dark:border-slate-800 rotate-45" />
                           <div className="relative bg-white dark:bg-slate-900 rounded-xl py-2">
                             <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-blue-600" />
-                            {item.children?.map((child) => (
+                            {item.children.map((child) => (
                               <Link
                                 key={child.id}
                                 href={child.href || '#'}
+                                target={child.newTab ? '_blank' : undefined}
+                                rel={child.newTab ? 'noopener noreferrer' : undefined}
                                 onClick={() => setDropdownOpen(null)}
                                 className="group/item flex items-center justify-between px-4 py-3 mx-1 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-200"
                               >
@@ -161,6 +163,8 @@ export default function Navigation() {
                   <Link 
                     key={item.id}
                     href={item.href || '#'} 
+                    target={item.newTab ? '_blank' : undefined}
+                    rel={item.newTab ? 'noopener noreferrer' : undefined}
                     className={`nav-link text-sm font-medium transition-colors ${scrolled ? 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white' : 'text-white/80 hover:text-white'}`}
                   >
                     {getLabel(item)}

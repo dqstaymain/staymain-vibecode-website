@@ -29,6 +29,7 @@ export interface NavItem {
   pageSlug?: string
   parentNavId?: string
   children?: NavItem[]
+  newTab?: boolean
 }
 
 export interface CMSUser {
@@ -49,10 +50,8 @@ export interface ContactInfo {
 export interface Case {
   id: string
   title: string
-  description: string
   image: string
   link?: string
-  tags: string[]
 }
 
 export interface Testimonial {
@@ -98,6 +97,7 @@ interface CMSContextType {
   removeNavItemFromParent: (itemId: string) => void
   moveNavItem: (fromIndex: number, toIndex: number) => void
   moveNavItemToParent: (childId: string, newParentId?: string) => void
+  convertToDropdown: (parentId: string, childId: string) => void
   moveChildItem: (parentId: string, fromIndex: number, toIndex: number) => void
   updateNavItem: (itemId: string, updates: Partial<NavItem>) => void
   updateContactInfo: (info: Partial<ContactInfo>) => void
@@ -168,36 +168,7 @@ const defaultPages: CMSPage[] = [
   },
 ]
 
-const defaultNavigation: NavItem[] = [
-  {
-    id: 'nav-ydelser',
-    label: 'Ydelser',
-    type: 'link',
-    href: '/ydelser',
-    pageSlug: 'ydelser'
-  },
-  {
-    id: 'nav-cases',
-    label: 'Cases',
-    type: 'link',
-    href: '/cases',
-    pageSlug: 'cases'
-  },
-  {
-    id: 'nav-om-os',
-    label: 'Om os',
-    type: 'link',
-    href: '/om-os',
-    pageSlug: 'om-os'
-  },
-  {
-    id: 'nav-faq',
-    label: 'FAQ',
-    type: 'link',
-    href: '/ofte-stillede-spørgsmål',
-    pageSlug: 'ofte-stillede-spørgsmål'
-  },
-]
+const defaultNavigation: NavItem[] = []
 
 const defaultContactInfo: ContactInfo = {
   logo: '',
@@ -232,17 +203,17 @@ function getInitialPages(): CMSPage[] {
 }
 
 function getInitialNavigation(): NavItem[] {
-  if (typeof window === 'undefined') return defaultNavigation
+  if (typeof window === 'undefined') return []
   try {
     const saved = localStorage.getItem('cms_navigation')
     if (saved) {
       const parsed = JSON.parse(saved)
-      if (Array.isArray(parsed)) {
+      if (Array.isArray(parsed) && parsed.length > 0) {
         return migrateNavigation(parsed)
       }
     }
   } catch {}
-  return defaultNavigation
+  return []
 }
 
 function migrateNavigation(nav: NavItem[]): NavItem[] {
@@ -327,62 +298,64 @@ export function CMSProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const initSupabase = async () => {
-      const hasEnvVars = !!process.env.NEXT_PUBLIC_SUPABASE_URL && !!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
+      const [cloudPages, cloudNav, cloudContact, cloudCases, cloudTestimonials, cloudLogos] = await Promise.all([
+        loadCMSPages(),
+        loadCMSNavigation(),
+        loadCMSContactInfo(),
+        loadCMSCases(),
+        loadCMSTestimonials(),
+        loadCMSCompanyLogos()
+      ])
       
-      if (hasEnvVars) {
-        const { data: { session } } = await supabase.auth.getSession()
-        setCurrentUser(session?.user ?? null)
-        
-        const [cloudPages, cloudNav, cloudContact, cloudCases, cloudTestimonials, cloudLogos] = await Promise.all([
-          loadCMSPages(),
-          loadCMSNavigation(),
-          loadCMSContactInfo(),
-          loadCMSCases(),
-          loadCMSTestimonials(),
-          loadCMSCompanyLogos()
-        ])
-        
-        if (cloudPages !== null) {
-          const finalPages = cloudPages.length > 0 ? cloudPages : defaultPages
-          setPages(finalPages)
-          localStorage.setItem('cms_pages', JSON.stringify(finalPages))
-        }
-        if (cloudNav !== null) {
-          const finalNav = cloudNav.length > 0 ? cloudNav : defaultNavigation
-          setNavigation(finalNav)
-          localStorage.setItem('cms_navigation', JSON.stringify(finalNav))
-        }
-        if (cloudContact !== null) {
-          setContactInfo(cloudContact)
-          localStorage.setItem('cms_contact_info', JSON.stringify(cloudContact))
-        }
-        if (cloudCases !== null) {
-          const finalCases = cloudCases.length > 0 ? cloudCases : []
-          setCases(finalCases)
-          localStorage.setItem('cms_cases', JSON.stringify(finalCases))
-        }
-        if (cloudTestimonials !== null) {
-          const finalTestimonials = cloudTestimonials.length > 0 ? cloudTestimonials : []
-          setTestimonials(finalTestimonials)
-          localStorage.setItem('cms_testimonials', JSON.stringify(finalTestimonials))
-        }
-        if (cloudLogos !== null) {
-          const finalLogos = cloudLogos.length > 0 ? cloudLogos : []
-          setCompanyLogos(finalLogos)
-          localStorage.setItem('cms_company_logos', JSON.stringify(finalLogos))
-        }
-        
-        setHasLoadedFromCloud(true)
+      if (cloudPages !== null) {
+        const finalPages = cloudPages.length > 0 ? cloudPages : defaultPages
+        setPages(finalPages)
+        localStorage.setItem('cms_pages', JSON.stringify(finalPages))
       } else {
         setPages(getInitialPages())
+      }
+      
+      if (cloudNav !== null) {
+        const finalNav = cloudNav.length > 0 ? cloudNav : []
+        setNavigation(finalNav)
+        localStorage.setItem('cms_navigation', JSON.stringify(finalNav))
+      } else {
         setNavigation(getInitialNavigation())
+      }
+      
+      if (cloudContact !== null) {
+        setContactInfo(cloudContact)
+        localStorage.setItem('cms_contact_info', JSON.stringify(cloudContact))
+      } else {
         setContactInfo(getInitialContactInfo())
+      }
+      
+      if (cloudCases !== null) {
+        const finalCases = cloudCases.length > 0 ? cloudCases : []
+        setCases(finalCases)
+        localStorage.setItem('cms_cases', JSON.stringify(finalCases))
+      } else {
         setCases(getInitialCases())
+      }
+      
+      if (cloudTestimonials !== null) {
+        const finalTestimonials = cloudTestimonials.length > 0 ? cloudTestimonials : []
+        setTestimonials(finalTestimonials)
+        localStorage.setItem('cms_testimonials', JSON.stringify(finalTestimonials))
+      } else {
         setTestimonials(getInitialTestimonials())
+      }
+      
+      if (cloudLogos !== null) {
+        const finalLogos = cloudLogos.length > 0 ? cloudLogos : []
+        setCompanyLogos(finalLogos)
+        localStorage.setItem('cms_company_logos', JSON.stringify(finalLogos))
+      } else {
         setCompanyLogos(getInitialCompanyLogos())
       }
       
-      setSupabaseReady(hasEnvVars)
+      setHasLoadedFromCloud(true)
+      setSupabaseReady(true)
       setIsLoading(false)
     }
 
@@ -403,11 +376,11 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   }, [pages, hasLoadedFromCloud])
 
   useEffect(() => {
-    if (hasLoadedFromCloud && navigation.length > 0) {
+    if (supabaseReady && navigation.length >= 0) {
       localStorage.setItem('cms_navigation', JSON.stringify(navigation))
       saveCMSNavigation(navigation)
     }
-  }, [navigation, hasLoadedFromCloud])
+  }, [navigation, supabaseReady])
 
   useEffect(() => {
     if (hasLoadedFromCloud && cases.length > 0) {
@@ -625,33 +598,14 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     setNavigation(nav)
   }
 
-  const addNavItem = (item: NavItem, parentNavId?: string) => {
+  const addNavItem = (item: NavItem) => {
     const normalizedItem = {
       ...item,
       href: item.href?.startsWith('/') ? item.href : `/${item.href || ''}`
     }
     
     setNavigation(prev => {
-      let newNav: NavItem[]
-      if (parentNavId) {
-        const parentIndex = prev.findIndex(i => i.id === parentNavId)
-        if (parentIndex !== -1) {
-          const parent = prev[parentIndex]
-          const updatedParent: NavItem = {
-            ...parent,
-            type: 'dropdown',
-            children: [
-              ...(parent.children || []),
-              { ...normalizedItem, parentNavId }
-            ]
-          }
-          newNav = prev.map((navItem, index) => index === parentIndex ? updatedParent : navItem)
-        } else {
-          newNav = [...prev, normalizedItem]
-        }
-      } else {
-        newNav = [...prev, normalizedItem]
-      }
+      const newNav = [...prev, normalizedItem]
       saveCMSNavigation(newNav)
       return newNav
     })
@@ -683,34 +637,39 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     }
     
     setNavigation(prev => {
-      let newNav: NavItem[]
-      if (updates.parentNavId) {
-        const item = prev.find(i => i.id === itemId)
-        if (!item) return prev
-        
-        const parentItem = prev.find(i => i.id === updates.parentNavId)
-        if (!parentItem) return prev
-        
-        const withoutItem = prev.filter(i => i.id !== itemId)
-        const normalizedItem = {
-          ...item,
-          ...normalizedUpdates,
-          href: normalizedUpdates.href ? normalizedUpdates.href : (item.href?.startsWith('/') ? item.href : `/${item.href || ''}`)
-        }
-        
-        const updatedParent: NavItem = {
-          ...parentItem,
-          type: 'dropdown',
-          children: [
-            ...(parentItem.children || []),
-            { ...normalizedItem, parentNavId: updates.parentNavId }
-          ]
-        }
-        
-        newNav = withoutItem.map(i => i.id === updates.parentNavId ? updatedParent : i)
-      } else {
-        newNav = prev.map(item => item.id === itemId ? { ...item, ...normalizedUpdates } : item)
+      const topLevelIndex = prev.findIndex(i => i.id === itemId)
+      if (topLevelIndex !== -1) {
+        const newNav = prev.map(item => item.id === itemId ? { ...item, ...normalizedUpdates } : item)
+        saveCMSNavigation(newNav)
+        return newNav
       }
+      
+      const newNav = prev.map(item => {
+        if (item.children?.some(c => c.id === itemId)) {
+          return {
+            ...item,
+            children: item.children.map(c => c.id === itemId ? { ...c, ...normalizedUpdates } : c)
+          }
+        }
+        if (item.children) {
+          const nestedParent = item.children.find(c => c.children?.some((gc: NavItem) => gc.id === itemId))
+          if (nestedParent && nestedParent.children) {
+            return {
+              ...item,
+              children: item.children.map(c => {
+                if (c.id === nestedParent.id) {
+                  return {
+                    ...c,
+                    children: c.children?.map(gc => gc.id === itemId ? { ...gc, ...normalizedUpdates } : gc)
+                  }
+                }
+                return c
+              })
+            }
+          }
+        }
+        return item
+      })
       saveCMSNavigation(newNav)
       return newNav
     })
@@ -736,14 +695,46 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const moveNavItemToParent = (childId: string, newParentId?: string) => {
     setNavigation(prev => {
       let child: NavItem | undefined
+      let foundInTopLevel = false
+      
+      const topLevelIndex = prev.findIndex(i => i.id === childId)
+      if (topLevelIndex !== -1) {
+        child = prev[topLevelIndex]
+        foundInTopLevel = true
+      }
+      
       const withoutChild = prev.map(item => {
         if (item.children?.some(c => c.id === childId)) {
-          child = item.children?.find(c => c.id === childId)
+          if (!child) {
+            child = item.children?.find(c => c.id === childId)
+          }
           const newChildren = item.children?.filter(c => c.id !== childId) || []
           return {
             ...item,
             children: newChildren.length > 0 ? newChildren : undefined,
             type: newChildren.length > 0 ? item.type : 'link' as const
+          }
+        }
+        if (item.children) {
+          const nestedParent = item.children.find(c => c.children?.some((gc: NavItem) => gc.id === childId))
+          if (nestedParent && nestedParent.children) {
+            if (!child) {
+              child = nestedParent.children.find((gc: NavItem) => gc.id === childId)
+            }
+            const newNestedChildren = nestedParent.children.filter((gc: NavItem) => gc.id !== childId)
+            return {
+              ...item,
+              children: item.children.map(c => {
+                if (c.id === nestedParent.id) {
+                  return {
+                    ...c,
+                    children: newNestedChildren.length > 0 ? newNestedChildren : undefined,
+                    type: newNestedChildren.length > 0 ? c.type : 'link' as const
+                  }
+                }
+                return c
+              })
+            }
           }
         }
         return item
@@ -757,8 +748,14 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       }
 
       let newNav: NavItem[]
+      if (foundInTopLevel) {
+        newNav = withoutChild.filter(i => i.id !== childId)
+      } else {
+        newNav = withoutChild
+      }
+      
       if (newParentId) {
-        newNav = withoutChild.map(item => {
+        newNav = newNav.map(item => {
           if (item.id === newParentId) {
             return {
               ...item,
@@ -769,10 +766,28 @@ export function CMSProvider({ children }: { children: ReactNode }) {
               ]
             }
           }
+          if (item.children?.some(c => c.id === newParentId)) {
+            return {
+              ...item,
+              children: item.children.map(c => {
+                if (c.id === newParentId) {
+                  return {
+                    ...c,
+                    type: 'dropdown' as const,
+                    children: [
+                      ...(c.children || []),
+                      { ...normalizedChild, parentNavId: newParentId }
+                    ]
+                  }
+                }
+                return c
+              })
+            }
+          }
           return item
         })
       } else {
-        newNav = [...withoutChild, { ...child, parentNavId: undefined }]
+        newNav = [...newNav, { ...child, parentNavId: undefined }]
       }
       saveCMSNavigation(newNav)
       return newNav
@@ -790,6 +805,50 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         }
         return item
       })
+      saveCMSNavigation(newNav)
+      return newNav
+    })
+  }
+
+  const convertToDropdown = (parentId: string, childId: string) => {
+    setNavigation(prev => {
+      const child = prev.find(i => i.id === childId)
+      if (!child) return prev
+
+      const withoutChild = prev.filter(i => i.id !== childId)
+
+      const newNav = withoutChild.map(item => {
+        if (item.id === parentId) {
+          return {
+            ...item,
+            type: 'dropdown' as const,
+            children: [
+              ...(item.children || []),
+              { ...child, parentNavId: parentId }
+            ]
+          }
+        }
+        if (item.children?.some(c => c.id === parentId)) {
+          return {
+            ...item,
+            children: item.children.map(c => {
+              if (c.id === parentId) {
+                return {
+                  ...c,
+                  type: 'dropdown' as const,
+                  children: [
+                    ...(c.children || []),
+                    { ...child, parentNavId: parentId }
+                  ]
+                }
+              }
+              return c
+            })
+          }
+        }
+        return item
+      })
+
       saveCMSNavigation(newNav)
       return newNav
     })
@@ -1042,6 +1101,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       moveNavItem,
       moveNavItemToParent,
       moveChildItem,
+      convertToDropdown,
       updateNavItem,
       updateContactInfo,
       addCase,
