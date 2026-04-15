@@ -1,21 +1,64 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
-import { ArrowRight, ChevronDown } from 'lucide-react'
+import { useEffect, useRef, ReactNode } from 'react'
+import { ArrowRight, ChevronDown, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
 import { useLanguage } from '@/lib/context'
 
 interface HeroProps {
   customContent?: Record<string, any>
+  title?: string
+  description?: ReactNode
+  buttons?: Array<{
+    label: string
+    href?: string
+    onClick?: () => void
+    variant?: 'primary' | 'secondary'
+    icon?: 'arrow' | 'external'
+  }>
+  backgroundType?: 'gradient' | 'image' | 'video'
+  backgroundImage?: string
+  backgroundVideo?: string
+  backgroundOverlay?: number
+  showOrbs?: boolean
+  showStats?: boolean
+  badge?: string
+  alignment?: 'left' | 'center'
 }
 
-export default function Hero({ customContent }: HeroProps) {
-  const { t } = useLanguage()
+function RichText({ content, alignment = 'center' }: { content: ReactNode; alignment?: 'left' | 'center' }) {
+  if (typeof content === 'string') {
+    return (
+      <p className={`text-base sm:text-lg lg:text-xl text-white/70 max-w-2xl sm:max-w-3xl mb-8 sm:mb-12 animate-fadeInUp ${alignment === 'left' ? '' : 'mx-auto'}`}>
+        {content}
+      </p>
+    )
+  }
+  return <>{content}</>
+}
+
+export default function Hero({
+  customContent,
+  title,
+  description,
+  buttons,
+  backgroundType = 'gradient',
+  backgroundImage,
+  backgroundVideo,
+  backgroundOverlay = 0.5,
+  showOrbs = true,
+  showStats = true,
+  badge,
+  alignment
+}: HeroProps) {
+  const { t, lang } = useLanguage()
   const orb1Ref = useRef<HTMLDivElement>(null)
   const orb2Ref = useRef<HTMLDivElement>(null)
   const orb3Ref = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
+    if (!showOrbs) return
+    
     let mouseX = 0
     let mouseY = 0
     let orb1X = 0, orb1Y = 0
@@ -56,76 +99,206 @@ export default function Hero({ customContent }: HeroProps) {
       window.removeEventListener('mousemove', handleMouseMove)
       cancelAnimationFrame(animationFrame)
     }
-  }, [])
+  }, [showOrbs])
 
   const scrollToServices = () => {
     document.getElementById('services')?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const title = customContent?.title || t.hero.title
-  const subtitle = customContent?.subtitle || t.hero.subtitle
-  const cta1 = customContent?.cta1 || t.hero.cta1
-  const cta2 = customContent?.cta2 || t.hero.cta2
+  const heroTitle = title || customContent?.title || t.hero.title
+  const heroDescription = description || customContent?.description || customContent?.subtitle || t.hero.subtitle
+  const heroBadge = badge || customContent?.badge || 'Webbureau i Danmark'
+  const heroShowStats = customContent?.showStats !== undefined ? customContent.showStats : showStats
+  
+  const heroBgImage = customContent?.backgroundImage || backgroundImage
+  const heroBgVideo = customContent?.backgroundVideo || backgroundVideo
+  
+  const heroBackgroundType = heroBgVideo 
+    ? 'video' 
+    : heroBgImage 
+      ? 'image' 
+      : (customContent?.backgroundType || backgroundType)
+  
+  const heroBackgroundImage = heroBgImage
+  const heroBackgroundVideo = heroBgVideo?.trim() || ''
+  const heroBackgroundOverlay = customContent?.backgroundOverlay ?? backgroundOverlay
+  const heroAlignment = customContent?.alignment || alignment || 'center'
+
+  const defaultButtons: Array<{
+    label: string
+    href?: string
+    onClick?: () => void
+    variant: 'primary' | 'secondary'
+    icon: 'arrow' | 'external'
+  }> = []
+
+  if (customContent?.button1Label) {
+    defaultButtons.push({
+      label: customContent.button1Label,
+      href: customContent.button1Href || '#services',
+      onClick: customContent.button1Href ? undefined : scrollToServices,
+      variant: 'secondary',
+      icon: 'arrow'
+    })
+  }
+  if (customContent?.button2Label) {
+    defaultButtons.push({
+      label: customContent.button2Label,
+      href: customContent.button2Href || '/kontakt',
+      variant: 'primary',
+      icon: 'arrow'
+    })
+  }
+  if (defaultButtons.length === 0) {
+    defaultButtons.push(
+      {
+        label: t.hero.cta1,
+        href: '#services',
+        onClick: scrollToServices,
+        variant: 'secondary',
+        icon: 'arrow'
+      },
+      {
+        label: t.hero.cta2,
+        href: '/kontakt',
+        variant: 'primary',
+        icon: 'arrow'
+      }
+    )
+  }
+
+  const heroButtons = buttons || defaultButtons
+
+  const renderButton = (button: typeof heroButtons[0], index: number) => {
+    const baseClass = button.variant === 'primary' 
+      ? 'btn-primary w-full sm:w-auto text-sm sm:text-base' 
+      : 'btn-secondary bg-transparent text-white border-white/30 hover:bg-white/10 hover:border-white/50 w-full sm:w-auto text-sm sm:text-base'
+
+    if (button.onClick) {
+      return (
+        <button 
+          key={index} 
+          onClick={button.onClick} 
+          className={`${baseClass} animate-fadeInUp`}
+          style={{ animationDelay: `${400 + index * 100}ms` }}
+        >
+          {button.label}
+          {button.icon === 'arrow' && <ArrowRight size={18} />}
+          {button.icon === 'external' && <ExternalLink size={18} />}
+        </button>
+      )
+    }
+
+    return (
+      <Link 
+        key={index}
+        href={button.href || '/'}
+        className={`${baseClass} animate-fadeInUp flex items-center justify-center gap-2`}
+        style={{ animationDelay: `${400 + index * 100}ms` }}
+      >
+        {button.label}
+        {button.icon === 'arrow' && <ArrowRight size={18} />}
+        {button.icon === 'external' && <ExternalLink size={18} />}
+      </Link>
+    )
+  }
+
+  const getBackgroundClass = () => {
+    switch (heroBackgroundType) {
+      case 'image':
+        return ''
+      case 'video':
+        return ''
+      default:
+        return 'hero-gradient'
+    }
+  }
 
   return (
-    <section className="relative min-h-screen flex items-center justify-center hero-gradient overflow-hidden">
-      <div 
-        ref={orb1Ref}
-        className="orb orb-1 hidden sm:block" 
-        style={{ top: '10%', left: '10%' }}
-      />
-      <div 
-        ref={orb2Ref}
-        className="orb orb-2 hidden sm:block" 
-        style={{ top: '30%', right: '10%' }}
-      />
-      <div 
-        ref={orb3Ref}
-        className="orb orb-3 hidden sm:block" 
-        style={{ bottom: '20%', left: '30%' }}
-      />
+    <section className={`relative min-h-screen flex items-center justify-center ${getBackgroundClass()} overflow-hidden`}>
+      {heroBackgroundType === 'image' && heroBackgroundImage && (
+        <div 
+          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
+          style={{ backgroundImage: `url(${heroBackgroundImage})` }}
+        />
+      )}
+      
+      {heroBackgroundType === 'video' && heroBackgroundVideo && (
+        <video
+          key={heroBackgroundVideo}
+          className="absolute inset-0 w-full h-full object-cover"
+          autoPlay
+          muted
+          loop
+          playsInline
+        >
+          <source src={heroBackgroundVideo} type="video/mp4" />
+        </video>
+      )}
 
-      <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+      {(heroBackgroundType === 'image' || heroBackgroundType === 'video') && (
+        <div 
+          className="absolute inset-0 bg-black"
+          style={{ opacity: heroBackgroundOverlay }}
+        />
+      )}
 
-      <div className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <div className="mb-4 sm:mb-6">
-          <span className="inline-block px-4 sm:px-5 py-1.5 sm:py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white/80 text-xs sm:text-sm font-medium">
-            Webbureau i Danmark
-          </span>
-        </div>
+      {showOrbs && heroBackgroundType === 'gradient' && (
+        <>
+          <div 
+            ref={orb1Ref}
+            className="orb orb-1 hidden sm:block" 
+            style={{ top: '10%', left: '10%' }}
+          />
+          <div 
+            ref={orb2Ref}
+            className="orb orb-2 hidden sm:block" 
+            style={{ top: '30%', right: '10%' }}
+          />
+          <div 
+            ref={orb3Ref}
+            className="orb orb-3 hidden sm:block" 
+            style={{ bottom: '20%', left: '30%' }}
+          />
+          <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(#fff 1px, transparent 1px), linear-gradient(90deg, #fff 1px, transparent 1px)', backgroundSize: '60px 60px' }} />
+        </>
+      )}
+
+      <div className={`relative z-10 max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 ${heroAlignment === 'left' ? 'text-left' : 'text-center'}`}>
+        {heroBadge && (
+          <div className="mb-4 sm:mb-6 animate-fadeInUp">
+            <span className="inline-block px-4 sm:px-5 py-1.5 sm:py-2 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 text-white/80 text-xs sm:text-sm font-medium">
+              {heroBadge}
+            </span>
+          </div>
+        )}
 
         <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-bold text-white leading-[1.1] mb-6 sm:mb-8 animate-fadeInUp">
-          {title}
+          {heroTitle}
         </h1>
 
-        <p className="text-base sm:text-lg lg:text-xl text-white/70 max-w-2xl sm:max-w-3xl mx-auto mb-8 sm:mb-12 animate-fadeInUp" style={{ animationDelay: '200ms' }}>
-          {subtitle}
-        </p>
+        <RichText content={heroDescription} alignment={heroAlignment} />
 
-        <div className="flex flex-col sm:flex-row items-center justify-center gap-3 sm:gap-4 animate-fadeInUp" style={{ animationDelay: '400ms' }}>
-          <button onClick={scrollToServices} className="btn-secondary bg-transparent text-white border-white/30 hover:bg-white/10 hover:border-white/50 w-full sm:w-auto text-sm sm:text-base">
-            {cta1}
-          </button>
-          <Link href="/kontakt" className="btn-primary w-full sm:w-auto text-sm sm:text-base">
-            {cta2}
-            <ArrowRight size={18} />
-          </Link>
+        <div className={`flex flex-col sm:flex-row gap-3 sm:gap-4 ${heroAlignment === 'left' ? '' : 'items-center justify-center'}`}>
+          {heroButtons.map((button, index) => renderButton(button, index))}
         </div>
 
-        <div className="mt-12 sm:mt-16 lg:mt-20 grid grid-cols-3 gap-4 sm:gap-6 lg:gap-8 max-w-sm sm:max-w-md lg:max-w-2xl mx-auto animate-fadeInUp" style={{ animationDelay: '600ms' }}>
-          <div className="text-center">
-            <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">50+</div>
-            <div className="text-white/50 text-xs sm:text-sm">Projekter</div>
+        {heroShowStats && (
+          <div className={`mt-12 sm:mt-16 lg:mt-20 flex flex-wrap gap-4 sm:gap-8 lg:gap-12 animate-fadeInUp ${heroAlignment === 'left' ? '' : 'justify-center'}`} style={{ animationDelay: '600ms' }}>
+            <div className={heroAlignment === 'left' ? 'text-left' : 'text-center'}>
+              <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">{customContent?.stat1Number || '50+'}</div>
+              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat1Label || (lang === 'da' ? 'Projekter' : 'Projects')}</div>
+            </div>
+            <div className={heroAlignment === 'left' ? 'text-left' : 'text-center'}>
+              <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">{customContent?.stat2Number || '100%'}</div>
+              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat2Label || (lang === 'da' ? 'Tilfredse' : 'Satisfied')}</div>
+            </div>
+            <div className={heroAlignment === 'left' ? 'text-left' : 'text-center'}>
+              <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">{customContent?.stat3Number || '5+'}</div>
+              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat3Label || (lang === 'da' ? 'Års erfaring' : 'Years experience')}</div>
+            </div>
           </div>
-          <div className="text-center">
-            <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">100%</div>
-            <div className="text-white/50 text-xs sm:text-sm">Tilfredse</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">5+</div>
-            <div className="text-white/50 text-xs sm:text-sm">Års erfaring</div>
-          </div>
-        </div>
+        )}
       </div>
 
       <button 

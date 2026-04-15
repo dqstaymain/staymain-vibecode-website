@@ -5,6 +5,8 @@ import Hero from '@/components/Hero'
 import Services from '@/components/Services'
 import Testimonials from '@/components/Testimonials'
 import SEOMeta from '@/components/SEOMeta'
+import CallToAction from '@/components/CallToAction'
+import ContentImageBlock from '@/components/ContentImageBlock'
 import Link from 'next/link'
 
 export default function CMSPage({ slug }: { slug: string }) {
@@ -21,7 +23,7 @@ export default function CMSPage({ slug }: { slug: string }) {
     )
   }
 
-  if (!page || page.blocks.length === 0) {
+  if (!page) {
     return (
       <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
         <div className="pt-32 pb-16">
@@ -71,6 +73,8 @@ function BlockRenderer({ block }: { block: CMSBlock }) {
       return <StatsBlock content={block.content} />
     case 'gallery':
       return <GalleryBlock content={block.content} />
+    case 'contentImage':
+      return <ContentImageBlock content={block.content} />
     default:
       return null
   }
@@ -78,7 +82,7 @@ function BlockRenderer({ block }: { block: CMSBlock }) {
 
 function TextBlock({ content }: { content?: Record<string, any> }) {
   return (
-    <section className="py-16 sm:py-24 bg-white dark:bg-slate-900">
+    <section className="py-16 sm:py-24">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         {content?.title && (
           <h2 className="text-3xl sm:text-4xl font-bold text-slate-900 dark:text-white mb-6">
@@ -96,37 +100,31 @@ function TextBlock({ content }: { content?: Record<string, any> }) {
 }
 
 function CTABlock({ content }: { content?: Record<string, any> }) {
-  return (
-    <section className="py-16 sm:py-24 bg-blue-500">
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-        <h2 className="text-3xl sm:text-4xl font-bold text-white mb-6">
-          {content?.title || 'Klar til at komme i gang?'}
-        </h2>
-        <a
-          href="/kontakt"
-          className="inline-flex items-center gap-2 px-8 py-4 bg-white text-blue-600 font-semibold rounded-full hover:bg-blue-50 transition-colors"
-        >
-          {content?.buttonText || 'Kontakt os'}
-        </a>
-      </div>
-    </section>
-  )
+  return <CallToAction title={content?.title || 'Klar til at komme i gang?'} description={content?.description} />
 }
 
-function StatsBlock({ content }: { content?: Record<string, any> }) {
-  const stats = content?.stats || [
-    { number: '50+', label: 'Projekter' },
-    { number: '100%', label: 'Tilfredse' },
-    { number: '5+', label: 'Års erfaring' },
-    { number: '24/7', label: 'Support' },
-  ]
+const defaultStats = [
+  { id: 'default-stat-0', number: '50+', label: 'Projekter' },
+  { id: 'default-stat-1', number: '100%', label: 'Tilfredse' },
+  { id: 'default-stat-2', number: '5+', label: 'Års erfaring' },
+  { id: 'default-stat-3', number: '24/7', label: 'Support' },
+]
+
+const defaultGalleryItems = [
+  { id: 'default-gallery-0', title: 'Projekt 1', category: 'Hjemmeside' },
+  { id: 'default-gallery-1', title: 'Projekt 2', category: 'Webshop' },
+  { id: 'default-gallery-2', title: 'Projekt 3', category: 'Meta Ads' },
+]
+
+function StatsBlock({ content = {} }: { content?: Record<string, any> }) {
+  const stats = content && content.stats?.length > 0 ? content.stats : defaultStats
 
   return (
-    <section className="py-16 sm:py-24 bg-slate-50 dark:bg-slate-800">
+    <section className="py-16 sm:py-24">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat: any, index: number) => (
-            <div key={index} className="text-center">
+          {stats.map((stat: any) => (
+            <div key={stat.id} className="text-center">
               <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-blue-500 mb-2">
                 {stat.number}
               </div>
@@ -141,15 +139,11 @@ function StatsBlock({ content }: { content?: Record<string, any> }) {
   )
 }
 
-function GalleryBlock({ content }: { content?: Record<string, any> }) {
-  const items = content?.items || [
-    { id: 1, title: 'Nordic Tech', category: 'Hjemmeside' },
-    { id: 2, title: 'Copenhagen Eats', category: 'Webshop' },
-    { id: 3, title: 'FitLife', category: 'Meta Ads' },
-  ]
+function GalleryBlock({ content = {} }: { content?: Record<string, any> }) {
+  const items = content && content.items?.length > 0 ? content.items : defaultGalleryItems
 
   return (
-    <section className="py-16 sm:py-24 bg-white dark:bg-slate-900">
+    <section className="py-16 sm:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {items.map((item: any) => (

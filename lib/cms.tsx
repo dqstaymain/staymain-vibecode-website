@@ -4,9 +4,51 @@ import { createContext, useContext, useState, useEffect, ReactNode } from 'react
 import { supabase, supabaseAdmin, saveCMSPages, loadCMSPages, saveCMSNavigation, loadCMSNavigation, saveCMSContactInfo, loadCMSContactInfo, saveCMSCases, loadCMSCases, saveCMSTestimonials, loadCMSTestimonials, saveCMSCompanyLogos, loadCMSCompanyLogos, deleteCMSPage, deleteCMSNavigation, deleteCMSCase, deleteCMSTestimonial, deleteCMSCompanyLogo } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
+function generateId(prefix: string = 'id'): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+}
+
+function generateUniqueIdsForContent(content: Record<string, any>, type: string): Record<string, any> {
+  const newContent = { ...content }
+  
+  switch (type) {
+    case 'stats':
+      if (newContent.stats && Array.isArray(newContent.stats)) {
+        newContent.stats = newContent.stats.map((stat: any, index: number) => ({
+          ...stat,
+          id: stat.id || generateId(`stat-${index}`)
+        }))
+      } else if (!newContent.stats) {
+        newContent.stats = [
+          { id: generateId('stat-0'), number: '50+', label: 'Projekter' },
+          { id: generateId('stat-1'), number: '100%', label: 'Tilfredse' },
+          { id: generateId('stat-2'), number: '5+', label: 'Års erfaring' },
+          { id: generateId('stat-3'), number: '24/7', label: 'Support' },
+        ]
+      }
+      break
+    case 'gallery':
+      if (newContent.items && Array.isArray(newContent.items)) {
+        newContent.items = newContent.items.map((item: any, index: number) => ({
+          ...item,
+          id: item.id || generateId(`gallery-${index}`)
+        }))
+      } else if (!newContent.items) {
+        newContent.items = [
+          { id: generateId('gallery-0'), title: 'Projekt 1', category: 'Hjemmeside' },
+          { id: generateId('gallery-1'), title: 'Projekt 2', category: 'Webshop' },
+          { id: generateId('gallery-2'), title: 'Projekt 3', category: 'Meta Ads' },
+        ]
+      }
+      break
+  }
+  
+  return newContent
+}
+
 export interface CMSBlock {
   id: string
-  type: 'hero' | 'text' | 'services' | 'testimonials' | 'cta' | 'stats' | 'gallery' | 'contact'
+  type: 'hero' | 'text' | 'services' | 'testimonials' | 'cta' | 'stats' | 'gallery' | 'contact' | 'contentImage'
   content?: Record<string, any>
 }
 

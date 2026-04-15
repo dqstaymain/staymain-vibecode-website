@@ -11,7 +11,10 @@ export const translations = {
       title: 'Vi skaber digitale oplevelser, der tæller.',
       subtitle: 'StayMain er et kreativt webbureau i Danmark. Vi kombinerer moderne design med teknisk ekspertise for at bygge websites, der leverer resultater.',
       cta1: 'Se vores ydelser',
-      cta2: 'Lad os tale sammen'
+      cta2: 'Lad os tale sammen',
+      ctaHjemmeside: 'Hjemmeside',
+      ctaWebshop: 'Webshop',
+      ctaMetaAds: 'Meta Ads'
     },
     services: {
       title: 'Vores ydelser',
@@ -71,7 +74,10 @@ export const translations = {
       title: 'We create digital experiences that matter.',
       subtitle: 'StayMain is a creative web agency based in Denmark. We combine modern design with technical expertise to build websites that deliver results.',
       cta1: 'See our services',
-      cta2: "Let's talk"
+      cta2: "Let's talk",
+      ctaHjemmeside: 'Website',
+      ctaWebshop: 'Webshop',
+      ctaMetaAds: 'Meta Ads'
     },
     services: {
       title: 'Our Services',

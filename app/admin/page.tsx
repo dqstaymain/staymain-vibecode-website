@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { 
+import {
   Layout, 
   Image, 
   MessageSquare, 
@@ -44,14 +44,20 @@ import {
   Copy,
   ExternalLink,
   Loader2,
-  Upload
+  Upload,
+  Headphones
 } from 'lucide-react'
 import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo } from '@/lib/cms'
 import { uploadImage } from '@/lib/supabase'
 
+function generateId(prefix: string = 'id'): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
+}
+
 const blockTypes = [
   { type: 'hero', label: 'Hero', icon: Layout, description: 'Stor header med titel og CTA' },
   { type: 'text', label: 'Tekst', icon: Type, description: 'Titel og tekstafsnit' },
+  { type: 'contentImage', label: 'Indhold + Billede', icon: ImageIcon, description: '2 kolonner med tekst og billede' },
   { type: 'services', label: 'Services', icon: Settings, description: 'Vis ydelser i grid' },
   { type: 'testimonials', label: 'Anmeldelser', icon: MessageSquare, description: 'Kundeudtalelser slider' },
   { type: 'stats', label: 'Statistik', icon: BarChart3, description: 'Tal og statistik' },
@@ -74,8 +80,10 @@ function Dashboard() {
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
   const [draggingFromPanel, setDraggingFromPanel] = useState(false)
+  const [panelSelectedType, setPanelSelectedType] = useState<CMSBlock['type'] | null>(null)
   const [showComponentPicker, setShowComponentPicker] = useState(false)
   const [editingBlock, setEditingBlock] = useState<string | null>(null)
+  const blockEditRef = useRef<((fieldKey: string, url: string) => void) | null>(null)
   const [editingMeta, setEditingMeta] = useState(false)
   const [editingNavigation, setEditingNavigation] = useState(false)
   const [editingNavItem, setEditingNavItem] = useState<string | null>(null)
@@ -112,10 +120,32 @@ function Dashboard() {
   const [editingTestimonial, setEditingTestimonial] = useState<string | null>(null)
   const [editingLogo, setEditingLogo] = useState<string | null>(null)
   const [showMediaPicker, setShowMediaPicker] = useState(false)
-  const [mediaPickerTarget, setMediaPickerTarget] = useState<'logo' | 'favicon'>('logo')
+  const [mediaPickerTarget, setMediaPickerTarget] = useState<'logo' | 'favicon' | 'image' | 'video'>('logo')
+  const [mediaPickerConfig, setMediaPickerConfig] = useState<{filter: string, fieldKey: string, blockId: string | null} | null>(null)
+
+  const handleOpenMediaPicker = useCallback((filter: string, fieldKey: string) => {
+    setMediaPickerTarget(filter as any)
+    const currentBlockId = editingBlock
+    setMediaPickerConfig({ filter, fieldKey, blockId: currentBlockId })
+    setShowMediaPicker(true)
+  }, [editingBlock])
+  
+  const handleOpenLogoPicker = useCallback(() => {
+    setMediaPickerTarget('logo')
+    setMediaPickerConfig(null)
+    setShowMediaPicker(true)
+  }, [])
+  
+  const handleOpenFaviconPicker = useCallback(() => {
+    setMediaPickerTarget('favicon')
+    setMediaPickerConfig(null)
+    setShowMediaPicker(true)
+  }, [])
   const [uploadingLogo, setUploadingLogo] = useState(false)
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [uploadingFavicon, setUploadingFavicon] = useState(false)
+  const [showSupport, setShowSupport] = useState(false)
+  const [blockDeleteConfirm, setBlockDeleteConfirm] = useState<{ pageSlug: string; blockId: string } | null>(null)
 
   const uploadToMediaLibrary = async (file: File): Promise<string | null> => {
     const formData = new FormData()
@@ -192,29 +222,57 @@ function Dashboard() {
   const handlePanelDragStart = (type: CMSBlock['type']) => {
     setDraggingFromPanel(true)
     setDraggedIndex(-1)
-  }
-
-  const handlePanelDrop = (index?: number) => {
-    if (draggingFromPanel && selectedPage && draggedIndex !== null) {
-      const blockType = draggedIndex === -1 ? 'text' : blockTypes[draggedIndex]?.type || 'text'
-      const newBlock: CMSBlock = {
-        id: `${blockType}-${Date.now()}`,
-        type: blockType as CMSBlock['type'],
-        content: getDefaultContent(blockType as CMSBlock['type'])
-      }
-      addBlock(selectedPage, newBlock, index)
-    }
-    setDraggingFromPanel(false)
-    setDraggedIndex(null)
+    setPanelSelectedType(type)
   }
 
   const getDefaultContent = (type: CMSBlock['type']): Record<string, any> => {
     switch (type) {
       case 'hero': return { title: 'Ny hero sektion', subtitle: 'Beskrivelse...' }
       case 'text': return { title: 'Ny overskrift', body: 'Tekst indhold...' }
+      case 'contentImage': return { title: 'Ny overskrift', description: 'Beskrivelse her...', buttonText: 'Læs mere', layout: 'image-left' }
       case 'cta': return { title: 'Klar til at komme i gang?', buttonText: 'Kontakt os' }
+      case 'stats': return {
+        stats: [
+          { id: generateId('stat-0'), number: '50+', label: 'Projekter' },
+          { id: generateId('stat-1'), number: '100%', label: 'Tilfredse' },
+          { id: generateId('stat-2'), number: '5+', label: 'Års erfaring' },
+          { id: generateId('stat-3'), number: '24/7', label: 'Support' },
+        ]
+      }
+      case 'gallery': return {
+        items: [
+          { id: generateId('gallery-0'), title: 'Projekt 1', category: 'Hjemmeside' },
+          { id: generateId('gallery-1'), title: 'Projekt 2', category: 'Webshop' },
+          { id: generateId('gallery-2'), title: 'Projekt 3', category: 'Meta Ads' },
+        ]
+      }
       default: return {}
     }
+  }
+
+  const handlePanelDrop = (index?: number) => {
+    if (draggingFromPanel && selectedPage && panelSelectedType) {
+      const newBlock: CMSBlock = {
+        id: generateId(panelSelectedType),
+        type: panelSelectedType,
+        content: getDefaultContent(panelSelectedType)
+      }
+      addBlock(selectedPage, newBlock, index)
+    }
+    setDraggingFromPanel(false)
+    setDraggedIndex(null)
+    setPanelSelectedType(null)
+  }
+
+  const addBlockFromPanel = (type: CMSBlock['type']) => {
+    if (!selectedPage) return
+    const newBlock: CMSBlock = {
+      id: generateId(type),
+      type: type,
+      content: getDefaultContent(type)
+    }
+    addBlock(selectedPage, newBlock, currentPage?.blocks.length)
+    setShowComponentPicker(false)
   }
 
   const handleSave = () => {
@@ -259,6 +317,13 @@ function Dashboard() {
                 </span>
               </div>
             )}
+            <button
+              onClick={() => setShowSupport(true)}
+              className="px-4 py-2 rounded-lg font-medium text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors flex items-center gap-2"
+            >
+              <Headphones size={18} />
+              Support
+            </button>
             <button
               onClick={handleSave}
               disabled={!hasUnsavedChanges && !saved}
@@ -322,9 +387,9 @@ function Dashboard() {
                   
                   return (
                     <div key={page.slug}>
-                      <button
+                      <div
                         onClick={() => { setSelectedPage(page.slug); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors group ${indentClass} ${
+                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors group cursor-pointer ${indentClass} ${
                           selectedPage === page.slug && !editingNavigation
                             ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
                             : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
@@ -353,7 +418,7 @@ function Dashboard() {
                             </button>
                           )}
                         </div>
-                      </button>
+                      </div>
                       {children.map(child => renderPage(child, depth + 1))}
                     </div>
                   )
@@ -370,23 +435,6 @@ function Dashboard() {
               </button>
             </nav>
             )}
-            
-            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-              <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
-                Navigation
-              </h2>
-              <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(true); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  editingNavigation
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Menu size={18} />
-                <span className="text-sm font-medium">Rediger menu</span>
-              </button>
-            </div>
             
             <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
               <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
@@ -446,6 +494,23 @@ function Dashboard() {
               >
                 <Folder size={18} />
                 <span className="text-sm font-medium">Mediebibliotek</span>
+              </button>
+            </div>
+            
+            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
+              <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
+                Navigation
+              </h2>
+              <button
+                onClick={() => { setSelectedPage(null); setEditingNavigation(true); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                  editingNavigation
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Menu size={18} />
+                <span className="text-sm font-medium">Rediger menu</span>
               </button>
             </div>
             
@@ -777,7 +842,7 @@ function Dashboard() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => { setMediaPickerTarget('logo'); setShowMediaPicker(true) }}
+                        onClick={handleOpenLogoPicker}
                         className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                       >
                         <Folder size={18} className="mr-2 text-slate-400" />
@@ -814,7 +879,7 @@ function Dashboard() {
                     <div className="flex gap-2">
                       <button
                         type="button"
-                        onClick={() => { setMediaPickerTarget('favicon'); setShowMediaPicker(true) }}
+                        onClick={handleOpenFaviconPicker}
                         className="flex-1 flex items-center justify-center px-4 py-3 border-2 border-slate-300 dark:border-slate-600 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
                       >
                         <Folder size={18} className="mr-2 text-slate-400" />
@@ -1123,7 +1188,7 @@ function Dashboard() {
                             <Settings size={18} />
                           </button>
                           <button
-                            onClick={() => removeBlock(currentPage.slug, block.id)}
+                            onClick={() => setBlockDeleteConfirm({ pageSlug: currentPage.slug, blockId: block.id })}
                             className="p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg transition-colors"
                             title="Slet"
                           >
@@ -1172,12 +1237,16 @@ function Dashboard() {
                   <div className="p-6">
                     <BlockEditModal
                       block={currentPage.blocks.find(b => b.id === editingBlock)!}
+                      updateLocalContentRef={blockEditRef}
                       onClose={() => setEditingBlock(null)}
                       onSave={(content) => {
                         if (selectedPage) {
                           updateBlockContent(selectedPage, editingBlock, content)
                           setEditingBlock(null)
                         }
+                      }}
+                      onOpenMediaPicker={(filter, fieldKey) => {
+                        handleOpenMediaPicker(filter, fieldKey)
                       }}
                     />
                   </div>
@@ -1199,11 +1268,7 @@ function Dashboard() {
               {blockTypes.map((blockType) => (
                 <button
                   key={blockType.type}
-                  onClick={() => {
-                    handlePanelDragStart(blockType.type as CMSBlock['type'])
-                    handlePanelDrop()
-                    setShowComponentPicker(false)
-                  }}
+                  onClick={() => addBlockFromPanel(blockType.type as CMSBlock['type'])}
                   className="p-4 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-colors text-left"
                 >
                   <blockType.icon size={24} className="text-blue-500 mb-2" />
@@ -1336,6 +1401,41 @@ function Dashboard() {
                     }
                   }
                   setDeleteConfirm(null)
+                }}
+                className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+              >
+                Slet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {blockDeleteConfirm && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setBlockDeleteConfirm(null)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="p-6 text-center">
+              <div className="w-16 h-16 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center mx-auto mb-4">
+                <Trash2 size={32} className="text-red-500" />
+              </div>
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-2">
+                Slet sektion?
+              </h3>
+              <p className="text-slate-600 dark:text-slate-400">
+                Er du sikker på at du vil slette denne sektion? Denne handling kan ikke fortrydes.
+              </p>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-700 flex justify-end gap-3">
+              <button
+                onClick={() => setBlockDeleteConfirm(null)}
+                className="px-4 py-2 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                Annuller
+              </button>
+              <button
+                onClick={() => {
+                  removeBlock(blockDeleteConfirm.pageSlug, blockDeleteConfirm.blockId)
+                  setBlockDeleteConfirm(null)
                 }}
                 className="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
               >
@@ -1495,14 +1595,32 @@ function Dashboard() {
 
       {showMediaPicker && (
         <MediaPickerModal
+          filter={mediaPickerTarget === 'logo' || mediaPickerTarget === 'favicon' ? 'image' : mediaPickerTarget}
           onSelect={(url) => {
             if (mediaPickerTarget === 'logo') {
               updateContactForm({ logo: url })
-            } else {
+            } else if (mediaPickerTarget === 'favicon') {
               updateContactForm({ favicon: url })
+            } else if (mediaPickerConfig && mediaPickerConfig.blockId && selectedPage) {
+              const blockId = mediaPickerConfig.blockId
+              const block = currentPage?.blocks.find(b => b.id === blockId)
+              if (block) {
+                updateBlockContent(selectedPage, blockId, {
+                  ...block.content,
+                  [mediaPickerConfig.fieldKey]: url
+                })
+              }
+              if (blockEditRef.current) {
+                blockEditRef.current(mediaPickerConfig.fieldKey, url)
+              }
             }
+            setShowMediaPicker(false)
+            setMediaPickerConfig(null)
           }}
-          onClose={() => setShowMediaPicker(false)}
+          onClose={() => {
+            setShowMediaPicker(false)
+            setMediaPickerConfig(null)
+          }}
         />
       )}
 
@@ -1519,6 +1637,33 @@ function Dashboard() {
             setDeleteConfirmType('logo')
           }}
         />
+      )}
+
+      {showSupport && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSupport(false)}>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900 dark:text-white">Support</h3>
+              <button onClick={() => setShowSupport(false)} className="text-slate-400 hover:text-slate-600 text-2xl">×</button>
+            </div>
+            <div className="p-6 space-y-3">
+              <a
+                href={`tel:${contactInfo.phone}`}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium"
+              >
+                <Phone size={18} />
+                {contactInfo.phone || 'Intet telefonnummer'}
+              </a>
+              <a
+                href={`mailto:${contactInfo.email}`}
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg transition-colors font-medium"
+              >
+                <Mail size={18} />
+                {contactInfo.email || 'Ingen email'}
+              </a>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -1546,9 +1691,17 @@ function BlockPreview({ block }: { block: CMSBlock }) {
       )
     case 'cta':
       return (
-        <div className="text-center py-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+        <div className="py-4">
           <div className="font-semibold text-slate-900 dark:text-white">{block.content?.title}</div>
-          <div className="text-sm text-blue-600 mt-1">{block.content?.buttonText}</div>
+          <div className="text-sm text-slate-500 mt-1 line-clamp-2">{block.content?.description}</div>
+        </div>
+      )
+    case 'contentImage':
+      return (
+        <div className="py-4">
+          <div className="font-semibold text-slate-900 dark:text-white">{block.content?.title || 'Indhold + Billede'}</div>
+          <div className="text-sm text-slate-500 mt-1 line-clamp-2">{block.content?.description}</div>
+          <div className="text-xs text-slate-400 mt-1">Layout: {block.content?.layout === 'image-right' ? 'Billede til højre' : 'Billede til venstre'}</div>
         </div>
       )
     default:
@@ -1564,12 +1717,30 @@ function getBlockLabel(type: string) {
   return blockTypes.find(b => b.type === type)?.label || type
 }
 
-function BlockEditModal({ block, onClose, onSave }: { block: CMSBlock; onClose: () => void; onSave: (content: Record<string, any>) => void }) {
-  const [content, setContent] = useState(block.content || {})
+function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocalContentRef }: { block: CMSBlock; onClose: () => void; onSave: (content: Record<string, any>) => void; onOpenMediaPicker?: (filter: 'image' | 'video', fieldKey: string) => void; updateLocalContentRef?: React.MutableRefObject<((fieldKey: string, url: string) => void) | null> }) {
   const [localContent, setLocalContent] = useState(block.content || {})
+  
+  useEffect(() => {
+    setLocalContent(block.content || {})
+  }, [JSON.stringify(block.content)])
 
   const handleSave = () => {
-    onSave(localContent)
+    const contentToSave = { ...localContent }
+    if (!contentToSave.backgroundVideo) {
+      delete contentToSave.backgroundVideo
+      if (contentToSave.backgroundType === 'video') {
+        contentToSave.backgroundType = 'gradient'
+      }
+    }
+    if (!contentToSave.backgroundImage) {
+      delete contentToSave.backgroundImage
+    }
+    onSave(contentToSave)
+  }
+
+  const handleMediaClick = (fieldKey: string) => {
+    const filter = fieldKey === 'backgroundVideo' ? 'video' : 'image'
+    onOpenMediaPicker?.(filter, fieldKey)
   }
 
   return (
@@ -1577,7 +1748,17 @@ function BlockEditModal({ block, onClose, onSave }: { block: CMSBlock; onClose: 
       {block.type === 'hero' && (
         <>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Badge</label>
+            <input
+              type="text"
+              value={localContent.badge || ''}
+              onChange={e => setLocalContent({ ...localContent, badge: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              placeholder="f.eks. Webbureau i Danmark"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel (H1)</label>
             <input
               type="text"
               value={localContent.title || ''}
@@ -1586,14 +1767,193 @@ function BlockEditModal({ block, onClose, onSave }: { block: CMSBlock; onClose: 
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Undertekst</label>
-            <input
-              type="text"
-              value={localContent.subtitle || ''}
-              onChange={e => setLocalContent({ ...localContent, subtitle: e.target.value })}
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse</label>
+            <textarea
+              value={localContent.description || localContent.subtitle || ''}
+              onChange={e => setLocalContent({ ...localContent, description: e.target.value, subtitle: e.target.value })}
+              rows={4}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              placeholder="Beskrivelse af sektionen..."
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Tekstjustering</label>
+            <select
+              value={localContent.alignment || 'center'}
+              onChange={e => setLocalContent({ ...localContent, alignment: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+            >
+              <option value="center">Centreret</option>
+              <option value="left">Venstre</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Baggrundstype</label>
+            <select
+              value={localContent.backgroundType || 'gradient'}
+              onChange={e => setLocalContent({ ...localContent, backgroundType: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+            >
+              <option value="gradient">Gradient</option>
+              <option value="image">Baggrundsbillede</option>
+              <option value="video">Baggrundsvideo</option>
+            </select>
+          </div>
+          {localContent.backgroundType === 'image' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Baggrundsbillede</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={localContent.backgroundImage || ''}
+                  onChange={e => setLocalContent({ ...localContent, backgroundImage: e.target.value })}
+                  className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                  placeholder="/images/hero.jpg"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleMediaClick('backgroundImage')}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <ImageIcon size={16} />
+                  Vælg
+                </button>
+              </div>
+              {localContent.backgroundImage && (
+                <div className="mt-2 relative">
+                  <img src={localContent.backgroundImage} alt="Preview" className="w-full h-32 object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const newContent = { ...localContent }
+                      delete newContent.backgroundImage
+                      setLocalContent(newContent)
+                    }}
+                    className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {localContent.backgroundType === 'video' && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Baggrundsvideo</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={localContent.backgroundVideo || ''}
+                  onChange={e => setLocalContent({ ...localContent, backgroundVideo: e.target.value })}
+                  className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                  placeholder="/videos/hero.mp4"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleMediaClick('backgroundVideo')}
+                  className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center gap-2"
+                >
+                  <Film size={16} />
+                  Vælg
+                </button>
+              </div>
+              {localContent.backgroundVideo && (
+                <div className="mt-2 relative">
+                  <video src={localContent.backgroundVideo} className="w-full h-32 object-cover rounded-lg" />
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      const newContent = { ...localContent }
+                      delete newContent.backgroundVideo
+                      if (newContent.backgroundType === 'video') {
+                        newContent.backgroundType = 'gradient'
+                      }
+                      setLocalContent(newContent)
+                    }}
+                    className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+          {(localContent.backgroundType === 'image' || localContent.backgroundType === 'video') && (
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Overlay dækning (0-1)</label>
+              <input
+                type="number"
+                min="0"
+                max="1"
+                step="0.1"
+                value={localContent.backgroundOverlay ?? 0.5}
+                onChange={e => setLocalContent({ ...localContent, backgroundOverlay: parseFloat(e.target.value) })}
+                className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              />
+            </div>
+          )}
+          <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4">
+            <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Knapper</h4>
+            {[1, 2].map((num) => (
+              <div key={num} className="mb-4 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">Knap {num}</label>
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    value={localContent[`button${num}Label`] || ''}
+                    onChange={e => setLocalContent({ ...localContent, [`button${num}Label`]: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                    placeholder={`Knap ${num} tekst`}
+                  />
+                  <input
+                    type="text"
+                    value={localContent[`button${num}Href`] || ''}
+                    onChange={e => setLocalContent({ ...localContent, [`button${num}Href`]: e.target.value })}
+                    className="w-full px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                    placeholder="URL (f.eks. /hjemmeside)"
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="flex items-center gap-2 mt-4">
+            <input
+              type="checkbox"
+              id="showStats"
+              checked={localContent.showStats !== false}
+              onChange={e => setLocalContent({ ...localContent, showStats: e.target.checked })}
+              className="w-4 h-4 rounded border-slate-300 dark:border-slate-600"
+            />
+            <label htmlFor="showStats" className="text-sm text-slate-700 dark:text-slate-300">Vis statistik</label>
+          </div>
+          {localContent.showStats !== false && (
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-4 mt-4">
+              <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-3">Statistik</h4>
+              {[1, 2, 3].map((num) => (
+                <div key={num} className="mb-4 p-3 bg-slate-50 dark:bg-slate-700/50 rounded-lg">
+                  <label className="block text-xs font-medium text-slate-600 dark:text-slate-400 mb-2">Stat {num}</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="text"
+                      value={localContent[`stat${num}Number`] || ''}
+                      onChange={e => setLocalContent({ ...localContent, [`stat${num}Number`]: e.target.value })}
+                      className="px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                      placeholder="50+"
+                    />
+                    <input
+                      type="text"
+                      value={localContent[`stat${num}Label`] || ''}
+                      onChange={e => setLocalContent({ ...localContent, [`stat${num}Label`]: e.target.value })}
+                      className="px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                      placeholder="Projekter"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </>
       )}
       
@@ -1623,11 +1983,54 @@ function BlockEditModal({ block, onClose, onSave }: { block: CMSBlock; onClose: 
       {block.type === 'cta' && (
         <>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel (H2)</label>
             <input
               type="text"
               value={localContent.title || ''}
               onChange={e => setLocalContent({ ...localContent, title: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse</label>
+            <textarea
+              value={localContent.description || ''}
+              onChange={e => setLocalContent({ ...localContent, description: e.target.value })}
+              rows={4}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+            />
+          </div>
+        </>
+      )}
+
+      {block.type === 'contentImage' && (
+        <>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Layout</label>
+            <select
+              value={localContent.layout || 'image-left'}
+              onChange={e => setLocalContent({ ...localContent, layout: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+            >
+              <option value="image-left">Billede til venstre</option>
+              <option value="image-right">Billede til højre</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Titel (H2)</label>
+            <input
+              type="text"
+              value={localContent.title || ''}
+              onChange={e => setLocalContent({ ...localContent, title: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse</label>
+            <textarea
+              value={localContent.description || ''}
+              onChange={e => setLocalContent({ ...localContent, description: e.target.value })}
+              rows={4}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
             />
           </div>
@@ -1638,8 +2041,170 @@ function BlockEditModal({ block, onClose, onSave }: { block: CMSBlock; onClose: 
               value={localContent.buttonText || ''}
               onChange={e => setLocalContent({ ...localContent, buttonText: e.target.value })}
               className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              placeholder="f.eks. Læs mere"
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Knap link</label>
+            <input
+              type="text"
+              value={localContent.buttonLink || ''}
+              onChange={e => setLocalContent({ ...localContent, buttonLink: e.target.value })}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              placeholder="f.eks. /ydelser"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Billede URL</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={localContent.image || ''}
+                onChange={e => setLocalContent({ ...localContent, image: e.target.value })}
+                className="flex-1 px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                placeholder="https://..."
+              />
+              {onOpenMediaPicker && (
+                <button
+                  type="button"
+                  onClick={() => handleMediaClick('image')}
+                  className="px-4 py-2 bg-slate-200 dark:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-500"
+                >
+                  <ImageIcon size={18} />
+                </button>
+              )}
+            </div>
+            {localContent.image && (
+              <div className="mt-2 relative w-full h-32 bg-slate-100 dark:bg-slate-800 rounded-lg overflow-hidden">
+                <img src={localContent.image} alt="Preview" className="w-full h-full object-cover" />
+                <button
+                  type="button"
+                  onClick={() => setLocalContent({ ...localContent, image: '' })}
+                  className="absolute top-2 right-2 p-1 bg-red-500 text-white rounded-full hover:bg-red-600"
+                >
+                  <X size={14} />
+                </button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {block.type === 'stats' && (
+        <>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Statistikker</label>
+            <button
+              type="button"
+              onClick={() => {
+                const newStats = [
+                  ...(localContent.stats || []),
+                  { id: generateId('stat-new'), number: '0', label: 'Ny statistik' }
+                ]
+                setLocalContent({ ...localContent, stats: newStats })
+              }}
+              className="text-sm text-blue-500 hover:text-blue-600"
+            >
+              + Tilføj
+            </button>
+          </div>
+          {(localContent.stats || []).map((stat: any, index: number) => (
+            <div key={stat.id} className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg mb-2">
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={stat.number || ''}
+                  onChange={e => {
+                    const newStats = [...(localContent.stats || [])]
+                    newStats[index] = { ...stat, number: e.target.value }
+                    setLocalContent({ ...localContent, stats: newStats })
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+                  placeholder="Tal"
+                />
+                <input
+                  type="text"
+                  value={stat.label || ''}
+                  onChange={e => {
+                    const newStats = [...(localContent.stats || [])]
+                    newStats[index] = { ...stat, label: e.target.value }
+                    setLocalContent({ ...localContent, stats: newStats })
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+                  placeholder="Label"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newStats = (localContent.stats || []).filter((_: any, i: number) => i !== index)
+                    setLocalContent({ ...localContent, stats: newStats })
+                  }}
+                  className="p-1.5 text-red-500 hover:text-red-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
+        </>
+      )}
+
+      {block.type === 'gallery' && (
+        <>
+          <div className="flex justify-between items-center mb-2">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">Galleri elementer</label>
+            <button
+              type="button"
+              onClick={() => {
+                const newItems = [
+                  ...(localContent.items || []),
+                  { id: generateId('gallery-new'), title: 'Nyt projekt', category: 'Hjemmeside' }
+                ]
+                setLocalContent({ ...localContent, items: newItems })
+              }}
+              className="text-sm text-blue-500 hover:text-blue-600"
+            >
+              + Tilføj
+            </button>
+          </div>
+          {(localContent.items || []).map((item: any, index: number) => (
+            <div key={item.id} className="p-3 bg-slate-50 dark:bg-slate-700 rounded-lg mb-2">
+              <div className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={item.title || ''}
+                  onChange={e => {
+                    const newItems = [...(localContent.items || [])]
+                    newItems[index] = { ...item, title: e.target.value }
+                    setLocalContent({ ...localContent, items: newItems })
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+                  placeholder="Titel"
+                />
+                <input
+                  type="text"
+                  value={item.category || ''}
+                  onChange={e => {
+                    const newItems = [...(localContent.items || [])]
+                    newItems[index] = { ...item, category: e.target.value }
+                    setLocalContent({ ...localContent, items: newItems })
+                  }}
+                  className="flex-1 px-3 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-900 dark:text-white text-sm"
+                  placeholder="Kategori"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newItems = (localContent.items || []).filter((_: any, i: number) => i !== index)
+                    setLocalContent({ ...localContent, items: newItems })
+                  }}
+                  className="p-1.5 text-red-500 hover:text-red-600"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          ))}
         </>
       )}
       
@@ -2644,12 +3209,13 @@ function MediaLibrary() {
 interface MediaPickerModalProps {
   onSelect: (url: string) => void
   onClose: () => void
+  filter?: 'image' | 'video' | 'audio' | 'document'
 }
 
-function MediaPickerModal({ onSelect, onClose }: MediaPickerModalProps) {
+function MediaPickerModal({ onSelect, onClose, filter: initialFilter }: MediaPickerModalProps) {
   const [files, setFiles] = useState<MediaFile[]>([])
   const [loading, setLoading] = useState(true)
-  const [filter, setFilter] = useState<string>('image')
+  const [filter, setFilter] = useState<string>(initialFilter || 'image')
   const [uploading, setUploading] = useState(false)
 
   useEffect(() => {
