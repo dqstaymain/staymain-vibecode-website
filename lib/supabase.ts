@@ -160,12 +160,10 @@ export async function saveCMSCases(cases: any[]): Promise<boolean> {
     const formatted = cases.map(c => ({
       id: c.id,
       title: c.title,
-      description: c.description,
       image: c.image,
-      link: c.link,
-      tags: c.tags
+      link: c.link || null
     }))
-    const { error } = await supabase.from('cms_cases').upsert(formatted)
+    const { error } = await supabase.from('cms_cases').upsert(formatted, { onConflict: 'id' })
     if (error) throw error
     return true
   } catch (error) {
@@ -181,10 +179,8 @@ export async function loadCMSCases(): Promise<any[] | null> {
     return data.map(item => ({
       id: item.id,
       title: item.title,
-      description: item.description,
       image: item.image,
-      link: item.link,
-      tags: item.tags || []
+      link: item.link
     }))
   } catch (error) {
     console.error('Error loading cases:', error)
