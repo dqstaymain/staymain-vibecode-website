@@ -1727,13 +1727,13 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
   const handleSave = () => {
     const contentToSave = { ...localContent }
     if (!contentToSave.backgroundVideo) {
-      delete contentToSave.backgroundVideo
+      contentToSave.backgroundVideo = null
       if (contentToSave.backgroundType === 'video') {
         contentToSave.backgroundType = 'gradient'
       }
     }
     if (!contentToSave.backgroundImage) {
-      delete contentToSave.backgroundImage
+      contentToSave.backgroundImage = null
     }
     onSave(contentToSave)
   }
