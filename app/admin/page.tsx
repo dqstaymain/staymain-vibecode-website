@@ -1719,9 +1719,12 @@ function getBlockLabel(type: string) {
 
 function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocalContentRef }: { block: CMSBlock; onClose: () => void; onSave: (content: Record<string, any>) => void; onOpenMediaPicker?: (filter: 'image' | 'video', fieldKey: string) => void; updateLocalContentRef?: React.MutableRefObject<((fieldKey: string, url: string) => void) | null> }) {
   const [localContent, setLocalContent] = useState(block.content || {})
+  const mediaPickerOpenRef = useRef(false)
   
   useEffect(() => {
-    setLocalContent(block.content || {})
+    if (!mediaPickerOpenRef.current) {
+      setLocalContent(block.content || {})
+    }
   }, [JSON.stringify(block.content)])
 
   const handleSave = () => {
@@ -1739,9 +1742,29 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
   }
 
   const handleMediaClick = (fieldKey: string) => {
-    const filter = fieldKey === 'backgroundVideo' ? 'video' : 'image'
-    onOpenMediaPicker?.(filter, fieldKey)
+    mediaPickerOpenRef.current = true
+    onOpenMediaPicker?.(fieldKey === 'backgroundVideo' ? 'video' : 'image', fieldKey)
   }
+
+  useEffect(() => {
+    if (updateLocalContentRef) {
+      updateLocalContentRef.current = (fieldKey: string | null, url?: string) => {
+        if (fieldKey === null) {
+          mediaPickerOpenRef.current = false
+          return
+        }
+        setLocalContent(prev => {
+          const newContent = { ...prev, [fieldKey]: url }
+          if (fieldKey === 'backgroundVideo' && url) {
+            newContent.backgroundType = 'video'
+          } else if (fieldKey === 'backgroundImage' && url) {
+            newContent.backgroundType = 'image'
+          }
+          return newContent
+        })
+      }
+    }
+  }, [updateLocalContentRef])
 
   return (
     <div className="space-y-4">
