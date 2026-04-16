@@ -1,8 +1,6 @@
 'use client'
 
 import { Globe, ShoppingCart, Smartphone, Server, Search, Facebook, Mail, Palette, Camera } from 'lucide-react'
-import { useLanguage } from '@/lib/context'
-import { servicesList } from '@/lib/translations'
 
 const iconMap: Record<string, React.ElementType> = {
   Globe,
@@ -16,22 +14,30 @@ const iconMap: Record<string, React.ElementType> = {
   Camera,
 }
 
+const servicesList = [
+  { key: 'Hjemmeside', desc: 'Skræddersyede hjemmesider der converterer besøgende til kunder.' },
+  { key: 'Webshop', desc: 'Professionelle webshops med fokus på salg og brugeroplevelse.' },
+  { key: 'Appudvikling', desc: 'Native og cross-platform apps til iOS og Android.' },
+  { key: 'Support & Hosting', desc: 'Pålidelig hosting og lynhurtig support døgnet rundt.' },
+  { key: 'SEO', desc: 'Optimer din synlighed og rank højere på Google.' },
+  { key: 'Meta Ads', desc: 'Målrettede kampagner på Facebook og Instagram.' },
+  { key: 'E-mail Marketing', desc: 'Effektive nyhedsbreve der driver engagement og salg.' },
+  { key: 'Grafisk Design', desc: 'Unikt design der kommunikerer dit brands værdier.' },
+  { key: 'Foto & Video', desc: 'Professionelt indhold der fortæller din virksomheds historie.' },
+]
+
 const serviceIcons = ['Globe', 'ShoppingCart', 'Smartphone', 'Server', 'Search', 'Facebook', 'Mail', 'Palette', 'Camera']
 
 export default function Services() {
-  const { lang } = useLanguage()
-
   return (
     <section id="services" className="py-16 sm:py-20 lg:py-24 bg-white dark:bg-[#0F172A]">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-10 sm:mb-12">
           <h2 className="text-3xl sm:text-4xl font-bold text-[#0F172A] dark:text-white mb-3 sm:mb-4">
-            {lang === 'da' ? 'Vores ydelser' : 'Our Services'}
+            Vores ydelser
           </h2>
           <p className="text-base text-[#64748b] dark:text-white/60 max-w-2xl mx-auto">
-            {lang === 'da' 
-              ? 'Vi tilbyder alt inden for digital markedsføring og webudvikling' 
-              : 'Full-service digital marketing and web development'}
+            Vi tilbyder alt inden for digital markedsføring og webudvikling
           </p>
         </div>
 
@@ -52,10 +58,10 @@ export default function Services() {
                   )}
                 </div>
                 <h3 className="text-sm sm:text-base font-semibold text-[#0F172A] dark:text-white mb-1">
-                  {lang === 'da' ? service.key : service.keyEn}
+                  {service.key}
                 </h3>
                 <p className="text-xs sm:text-sm text-[#64748b] dark:text-white/60 line-clamp-2">
-                  {lang === 'da' ? service.desc : service.descEn}
+                  {service.desc}
                 </p>
               </div>
             )

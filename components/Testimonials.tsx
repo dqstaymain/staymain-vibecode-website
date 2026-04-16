@@ -2,12 +2,42 @@
 
 import { useState, useEffect } from 'react'
 import { ChevronLeft, ChevronRight, Quote } from 'lucide-react'
-import { useLanguage } from '@/lib/context'
+import { useCMS } from '@/lib/cms'
+
+const defaultTestimonials = [
+  {
+    text: 'StayMain har virkelig hjulpet os med at transformere vores online tilstedeværelse. Vores nye hjemmeside har øget vores konverteringer markant.',
+    author: 'Mads Jensen',
+    role: 'Direktør, Nordic Tech'
+  },
+  {
+    text: 'Professionelt team med øje for detaljer. De forstod præcis hvad vi havde brug for, og leverede til tiden.',
+    author: 'Sofie Andersen',
+    role: 'Marketingchef, Copenhagen Eats'
+  },
+  {
+    text: 'Vi har fået markant flere kunder via Google efter SEO-optimeringen. Kan varmt anbefale StayMain!',
+    author: 'Lars Pedersen',
+    role: 'Indehaver, Aarhus Bilpleje'
+  },
+  {
+    text: 'Vores nye webshop er hurtigere og mere brugervenlig end før. Salget er steget med 40% på tre måneder.',
+    author: 'Emma Nielsen',
+    role: 'Stifter, Nordic fashion'
+  },
+  {
+    text: 'God kommunikation og professionel håndtering af vores meta ads. ROI har været over forventning.',
+    author: 'Mikkel Hansen',
+    role: 'Head of Marketing, FitLife'
+  }
+]
 
 export default function Testimonials() {
-  const { t, lang } = useLanguage()
+  const { testimonials: cmsTestimonials } = useCMS()
   const [currentIndex, setCurrentIndex] = useState(0)
-  const testimonials = t.testimonials.items
+  const testimonials = cmsTestimonials.length > 0 
+    ? cmsTestimonials.map(item => ({ text: item.content, author: item.name, role: item.role }))
+    : defaultTestimonials
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -29,7 +59,7 @@ export default function Testimonials() {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-12 sm:mb-16">
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[#0F172A] dark:text-white mb-4">
-            {t.testimonials.title}
+            Hvad vores kunder siger
           </h2>
         </div>
 
@@ -60,7 +90,7 @@ export default function Testimonials() {
                           {item.author}
                         </div>
                         <div className="text-sm text-[#64748b] dark:text-white/60">
-                          {lang === 'da' ? item.role : item.role}
+                          {item.role}
                         </div>
                       </div>
                     </div>

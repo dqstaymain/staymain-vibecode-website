@@ -54,6 +54,14 @@ function generateId(prefix: string = 'id'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
+type FooterLink = {
+  id: string
+  label: string
+  href: string
+}
+
+
+
 const blockTypes = [
   { type: 'hero', label: 'Hero', icon: Layout, description: 'Stor header med titel og CTA' },
   { type: 'text', label: 'Tekst', icon: Type, description: 'Titel og tekstafsnit' },
@@ -111,11 +119,12 @@ function Dashboard() {
   const [newUserPassword, setNewUserPassword] = useState('')
   const [createdUserInfo, setCreatedUserInfo] = useState<{email: string; password: string} | null>(null)
   const [editingContactInfo, setEditingContactInfo] = useState(false)
-  const [pagesCollapsed, setPagesCollapsed] = useState(true)
+  const [pagesCollapsed, setPagesCollapsed] = useState(false)
   const [editingCases, setEditingCases] = useState(false)
   const [editingTestimonials, setEditingTestimonials] = useState(false)
   const [editingCompanyLogos, setEditingCompanyLogos] = useState(false)
   const [editingMediaLibrary, setEditingMediaLibrary] = useState(false)
+  const [editingHeaderFooter, setEditingHeaderFooter] = useState(false)
   const [editingCase, setEditingCase] = useState<string | null>(null)
   const [editingTestimonial, setEditingTestimonial] = useState<string | null>(null)
   const [editingLogo, setEditingLogo] = useState<string | null>(null)
@@ -175,7 +184,15 @@ function Dashboard() {
     address: '',
     cvr: '',
     logo: '',
-    favicon: ''
+    favicon: '',
+    headerButtonText: '',
+    footerDescription: '',
+    footerCol2Title: '',
+    footerCol3Title: '',
+    footerCol4Title: '',
+    footerCol2Links: [] as FooterLink[],
+    footerCol3Links: [] as FooterLink[],
+    footerCol4Links: [] as FooterLink[]
   })
 
   useEffect(() => {
@@ -276,7 +293,7 @@ function Dashboard() {
   }
 
   const handleSave = () => {
-    if (editingContactInfo) {
+    if (editingContactInfo || editingHeaderFooter) {
       updateContactInfo(contactForm)
     }
     setHasUnsavedChanges(false)
@@ -388,7 +405,7 @@ function Dashboard() {
                   return (
                     <div key={page.slug}>
                       <div
-                        onClick={() => { setSelectedPage(page.slug); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
+                        onClick={() => { setSelectedPage(page.slug); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setEditingHeaderFooter(false) }}
                         className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors group cursor-pointer ${indentClass} ${
                           selectedPage === page.slug && !editingNavigation
                             ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -441,7 +458,7 @@ function Dashboard() {
                 Indhold
               </h2>
               <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(true); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setContactForm({ ...contactInfo, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '' }) }}
+                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(true); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setEditingHeaderFooter(false); setContactForm({ companyName: contactInfo.companyName, email: contactInfo.email, phone: contactInfo.phone, address: contactInfo.address, cvr: contactInfo.cvr, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '', headerButtonText: contactInfo.headerButtonText, footerDescription: contactInfo.footerDescription, footerCol2Title: contactInfo.footerCol2Title, footerCol3Title: contactInfo.footerCol3Title, footerCol4Title: contactInfo.footerCol4Title, footerCol2Links: contactInfo.footerCol2Links, footerCol3Links: contactInfo.footerCol3Links, footerCol4Links: contactInfo.footerCol4Links }) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                   editingContactInfo
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -502,7 +519,7 @@ function Dashboard() {
                 Navigation
               </h2>
               <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(true); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
+                onClick={() => { setSelectedPage(null); setEditingNavigation(true); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setEditingHeaderFooter(false) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                   editingNavigation
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -511,6 +528,17 @@ function Dashboard() {
               >
                 <Menu size={18} />
                 <span className="text-sm font-medium">Rediger menu</span>
+              </button>
+              <button
+                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setEditingHeaderFooter(true); setContactForm({ ...contactInfo, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '', headerButtonText: contactInfo.headerButtonText || '', footerDescription: contactInfo.footerDescription || '', footerCol2Title: contactInfo.footerCol2Title || '', footerCol3Title: contactInfo.footerCol3Title || '', footerCol4Title: contactInfo.footerCol4Title || '', footerCol2Links: contactInfo.footerCol2Links || [], footerCol3Links: contactInfo.footerCol3Links || [], footerCol4Links: contactInfo.footerCol4Links || [] }) }}
+                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
+                  editingHeaderFooter
+                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
+                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
+                }`}
+              >
+                <Layout size={18} />
+                <span className="text-sm font-medium">Header / Footer</span>
               </button>
             </div>
             
@@ -914,6 +942,258 @@ function Dashboard() {
             </div>
           )}
 
+          {editingHeaderFooter && (
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-6">
+                  Rediger header og footer
+                </h2>
+                
+                <div className="space-y-6">
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 border-b pb-2">Header</h3>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Knap tekst</label>
+                        <input
+                          type="text"
+                          value={contactForm.headerButtonText}
+                          onChange={e => updateContactForm({ headerButtonText: e.target.value })}
+                          className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 border-b pb-2">Footer</h3>
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse</label>
+                        <input
+                          type="text"
+                          value={contactForm.footerDescription}
+                          onChange={e => updateContactForm({ footerDescription: e.target.value })}
+                          className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Kolonne 2 (Navigation)</h4>
+                    <div className="space-y-3 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Overskrift</label>
+                        <input
+                          type="text"
+                          value={contactForm.footerCol2Title}
+                          onChange={e => updateContactForm({ footerCol2Title: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Links</label>
+                        <div className="space-y-2">
+                          {(contactForm.footerCol2Links || []).map((link, index) => (
+                            <div key={link.id} className="flex items-center gap-2">
+                              <div className="flex-1 grid grid-cols-2 gap-2">
+                                <input
+                                  type="text"
+                                  value={link.label}
+                                  onChange={e => {
+                                    const newLinks = [...(contactForm.footerCol2Links || [])]
+                                    newLinks[index] = { ...newLinks[index], label: e.target.value }
+                                    updateContactForm({ footerCol2Links: newLinks })
+                                  }}
+                                  placeholder="Label"
+                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                />
+                                <input
+                                  type="text"
+                                  value={link.href}
+                                  onChange={e => {
+                                    const newLinks = [...(contactForm.footerCol2Links || [])]
+                                    newLinks[index] = { ...newLinks[index], href: e.target.value }
+                                    updateContactForm({ footerCol2Links: newLinks })
+                                  }}
+                                  placeholder="URL"
+                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                />
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const newLinks = (contactForm.footerCol2Links || []).filter((_, i) => i !== index)
+                                  updateContactForm({ footerCol2Links: newLinks })
+                                }}
+                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => {
+                              const newLink: FooterLink = {
+                                id: `footer-col2-${Date.now()}`,
+                                label: 'Ny link',
+                                href: '#'
+                              }
+                              updateContactForm({ footerCol2Links: [...(contactForm.footerCol2Links || []), newLink] })
+                            }}
+                            className="text-sm text-blue-500 hover:text-blue-600"
+                          >
+                            + Tilføj link
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Kolonne 3 (Services)</h4>
+                    <div className="space-y-3 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Overskrift</label>
+                        <input
+                          type="text"
+                          value={contactForm.footerCol3Title}
+                          onChange={e => updateContactForm({ footerCol3Title: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Links</label>
+                        <div className="space-y-2">
+                          {(contactForm.footerCol3Links || []).map((link, index) => (
+                            <div key={link.id} className="flex items-center gap-2">
+                              <div className="flex-1 grid grid-cols-2 gap-2">
+                                <input
+                                  type="text"
+                                  value={link.label}
+                                  onChange={e => {
+                                    const newLinks = [...(contactForm.footerCol3Links || [])]
+                                    newLinks[index] = { ...newLinks[index], label: e.target.value }
+                                    updateContactForm({ footerCol3Links: newLinks })
+                                  }}
+                                  placeholder="Label"
+                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                />
+                                <input
+                                  type="text"
+                                  value={link.href}
+                                  onChange={e => {
+                                    const newLinks = [...(contactForm.footerCol3Links || [])]
+                                    newLinks[index] = { ...newLinks[index], href: e.target.value }
+                                    updateContactForm({ footerCol3Links: newLinks })
+                                  }}
+                                  placeholder="URL"
+                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                />
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const newLinks = (contactForm.footerCol3Links || []).filter((_, i) => i !== index)
+                                  updateContactForm({ footerCol3Links: newLinks })
+                                }}
+                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => {
+                              const newLink: FooterLink = {
+                                id: `footer-col3-${Date.now()}`,
+                                label: 'Ny service',
+                                href: '#'
+                              }
+                              updateContactForm({ footerCol3Links: [...(contactForm.footerCol3Links || []), newLink] })
+                            }}
+                            className="text-sm text-blue-500 hover:text-blue-600"
+                          >
+                            + Tilføj link
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Kolonne 4</h4>
+                    <div className="space-y-3 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Overskrift</label>
+                        <input
+                          type="text"
+                          value={contactForm.footerCol4Title}
+                          onChange={e => updateContactForm({ footerCol4Title: e.target.value })}
+                          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Links</label>
+                        <div className="space-y-2">
+                          {(contactForm.footerCol4Links || []).map((link, index) => (
+                            <div key={link.id} className="flex items-center gap-2">
+                              <div className="flex-1 grid grid-cols-2 gap-2">
+                                <input
+                                  type="text"
+                                  value={link.label}
+                                  onChange={e => {
+                                    const newLinks = [...(contactForm.footerCol4Links || [])]
+                                    newLinks[index] = { ...newLinks[index], label: e.target.value }
+                                    updateContactForm({ footerCol4Links: newLinks })
+                                  }}
+                                  placeholder="Label"
+                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                />
+                                <input
+                                  type="text"
+                                  value={link.href}
+                                  onChange={e => {
+                                    const newLinks = [...(contactForm.footerCol4Links || [])]
+                                    newLinks[index] = { ...newLinks[index], href: e.target.value }
+                                    updateContactForm({ footerCol4Links: newLinks })
+                                  }}
+                                  placeholder="URL"
+                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                />
+                              </div>
+                              <button
+                                onClick={() => {
+                                  const newLinks = (contactForm.footerCol4Links || []).filter((_, i) => i !== index)
+                                  updateContactForm({ footerCol4Links: newLinks })
+                                }}
+                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
+                              >
+                                <Trash2 size={16} />
+                              </button>
+                            </div>
+                          ))}
+                          <button
+                            onClick={() => {
+                              const newLink: FooterLink = {
+                                id: `footer-col4-${Date.now()}`,
+                                label: 'Ny link',
+                                href: '#'
+                              }
+                              updateContactForm({ footerCol4Links: [...(contactForm.footerCol4Links || []), newLink] })
+                            }}
+                            className="text-sm text-blue-500 hover:text-blue-600"
+                          >
+                            + Tilføj link
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {editingCases && (
             <div className="flex-1 overflow-y-auto p-6">
               <div className="max-w-4xl mx-auto">
@@ -1107,7 +1387,7 @@ function Dashboard() {
             </div>
           )}
           
-          {selectedPage === null && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && !editingMediaLibrary && (
+          {selectedPage === null && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && !editingMediaLibrary && !editingHeaderFooter && (
             <div className="flex-1 flex items-center justify-center text-slate-500 dark:text-slate-400">
               <div className="text-center">
                 <Layout size={64} className="mx-auto mb-4 opacity-50" />
@@ -1116,7 +1396,7 @@ function Dashboard() {
             </div>
           )}
 
-          {currentPage && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && !editingMediaLibrary && (
+          {currentPage && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && !editingMediaLibrary && !editingHeaderFooter && (
             <>
               <div className="px-6 py-4 bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
                 <div>

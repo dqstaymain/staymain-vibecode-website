@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Sun, Moon } from 'lucide-react'
 import Link from 'next/link'
-import { useLanguage } from '@/lib/context'
+import { useTheme } from '@/lib/theme'
 import { useCMS } from '@/lib/cms'
 
 function HamburgerIcon({ isOpen, onClick }: { isOpen: boolean; onClick: () => void }) {
@@ -45,13 +45,20 @@ function HamburgerIcon({ isOpen, onClick }: { isOpen: boolean; onClick: () => vo
 }
 
 export default function Navigation() {
-  const { lang, t, toggleLang, theme, toggleTheme } = useLanguage()
-  const { navigation } = useCMS()
+  const { theme, toggleTheme, mounted } = useTheme()
+  const { navigation, contactInfo, supabaseReady } = useCMS()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null)
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState<string | null>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
+  const [isReady, setIsReady] = useState(false)
+
+  useEffect(() => {
+    if (mounted && supabaseReady) {
+      setTimeout(() => setIsReady(true), 100)
+    }
+  }, [mounted, supabaseReady])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -96,7 +103,7 @@ export default function Navigation() {
   }
 
   const getLabel = (item: any) => {
-    return lang === 'da' ? item.label : (item.labelEn || item.label)
+    return item.label
   }
 
   return (
@@ -130,13 +137,15 @@ export default function Navigation() {
                     
                     {dropdownOpen === item.id && (
                       <div 
-                        className="absolute top-full left-1/2 -translate-x-1/2 mt-4 w-56 opacity-0 invisible group-hover:opacity-100 group-hover:visible"
-                        style={{ transition: 'opacity 0.2s ease, transform 0.2s ease, visibility 0.2s' }}
+                        className="absolute top-full left-1/2 -translate-x-1/2 mt-6 w-64"
+                        style={{ 
+                          animation: 'dropdownFadeIn 0.3s ease forwards',
+                        }}
                       >
-                        <div className="bg-white dark:bg-slate-900 rounded-xl shadow-2xl border border-slate-100 dark:border-slate-800 overflow-hidden">
-                          <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-white dark:bg-slate-900 border-l border-t border-slate-100 dark:border-slate-800 rotate-45" />
-                          <div className="relative bg-white dark:bg-slate-900 rounded-xl py-2">
-                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 to-blue-600" />
+                        <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 dark:border-slate-700/30 overflow-hidden">
+                          <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-l border-t border-white/20 dark:border-slate-700/30 rotate-45" />
+                          <div className="relative bg-gradient-to-br from-white/90 to-white/50 dark:from-slate-900/90 dark:to-slate-900/50 rounded-2xl py-2">
+                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500" />
                             {item.children.map((child) => (
                               <Link
                                 key={child.id}
@@ -144,7 +153,7 @@ export default function Navigation() {
                                 target={child.newTab ? '_blank' : undefined}
                                 rel={child.newTab ? 'noopener noreferrer' : undefined}
                                 onClick={() => setDropdownOpen(null)}
-                                className="group/item flex items-center justify-between px-4 py-3 mx-1 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-all duration-200"
+                                className="group/item flex items-center justify-between px-5 py-3 mx-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-white/50 dark:hover:bg-slate-800/50 rounded-xl transition-all duration-200"
                               >
                                 <span className="font-medium text-slate-900 dark:text-white group-hover/item:text-blue-600 dark:group-hover/item:text-blue-400 transition-colors">
                                   {getLabel(child)}
@@ -174,43 +183,43 @@ export default function Navigation() {
             </div>
 
             <div className="hidden lg:flex items-center gap-2 xl:gap-3">
-              <button
-                onClick={toggleTheme}
-                className={`p-2 rounded-full transition-colors ${scrolled ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
-              >
-                {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
-              </button>
-              <button
-                onClick={toggleLang}
-                className={`px-3 xl:px-4 py-2 text-sm font-medium rounded-full transition-colors ${scrolled ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
-              >
-                {lang === 'da' ? 'EN' : 'DA'}
-              </button>
+              {isReady && (
+                <button
+                  onClick={toggleTheme}
+                  className={`p-2 rounded-full transition-colors ${scrolled ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700' : 'bg-white/10 text-white hover:bg-white/20'}`}
+                >
+                  {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+                </button>
+              )}
               <Link
                 href="/kontakt"
                 className="px-5 xl:px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-full transition-all hover:shadow-lg hover:shadow-blue-500/30 text-sm"
               >
-                {t.nav.getStarted}
+                {contactInfo.headerButtonText}
               </Link>
             </div>
 
             <div className="flex lg:hidden items-center gap-3 z-50">
-              <button
-                onClick={toggleTheme}
-                className={`p-2 rounded-full transition-colors ${scrolled || mobileOpen ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'bg-white/10 text-white'}`}
-              >
-                {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
-              </button>
-              <div className={`transition-colors duration-300 ${scrolled || mobileOpen ? 'text-slate-900 dark:text-white' : 'text-white'}`}>
-                <HamburgerIcon isOpen={mobileOpen} onClick={toggleMobile} />
-              </div>
+              {isReady && (
+                <>
+                  <button
+                    onClick={toggleTheme}
+                    className={`p-2 rounded-full transition-colors ${scrolled || mobileOpen ? 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300' : 'bg-white/10 text-white'}`}
+                  >
+                    {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
+                  </button>
+                  <div className={`transition-colors duration-300 ${scrolled || mobileOpen ? 'text-slate-900 dark:text-white' : 'text-white'}`}>
+                    <HamburgerIcon isOpen={mobileOpen} onClick={toggleMobile} />
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
       </nav>
 
-      <div className={`fixed inset-0 z-40 bg-white dark:bg-slate-900 lg:hidden transition-all duration-500 ease-out ${mobileOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full pointer-events-none'}`}>
-        <div className="flex flex-col h-full pt-20 sm:pt-24">
+      <div className={`fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-2xl lg:hidden transition-all duration-500 ease-out ${mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
+        <div className="flex flex-col h-full pt-20 sm:pt-24" style={{ animation: mobileOpen ? 'mobileMenuIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards' : 'none' }}>
           <nav className="flex-1 px-6 overflow-hidden relative">
             <div 
               className={`absolute inset-0 px-6 transition-all duration-300 ease-out ${
@@ -223,7 +232,7 @@ export default function Navigation() {
                     {item.type === 'dropdown' ? (
                       <button
                         onClick={() => openDropdown(item.id)}
-                        className="w-full flex items-center justify-between py-4 text-lg font-medium text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800"
+                        className="w-full flex items-center justify-between py-4 text-lg font-medium text-white border-b border-slate-800"
                       >
                         <span>{getLabel(item)}</span>
                         <svg className="w-6 h-6 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -234,7 +243,7 @@ export default function Navigation() {
                       <Link 
                         href={item.href || '#'} 
                         onClick={closeMobile} 
-                        className="flex items-center justify-between py-4 text-lg font-medium text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800"
+                        className="flex items-center justify-between py-4 text-lg font-medium text-white border-b border-slate-800"
                       >
                         <span>{getLabel(item)}</span>
                       </Link>
@@ -248,7 +257,7 @@ export default function Navigation() {
               item.type === 'dropdown' && (
                 <div 
                   key={`dropdown-${item.id}`}
-                  className={`absolute inset-0 px-6 bg-white dark:bg-slate-900 transition-all duration-300 ease-out ${
+                  className={`absolute inset-0 px-6 bg-slate-950/50 backdrop-blur-2xl transition-all duration-300 ease-out ${
                     mobileDropdownOpen === item.id ? 'translate-x-0 opacity-100' : 'translate-x-full opacity-0'
                   }`}
                 >
@@ -267,7 +276,7 @@ export default function Navigation() {
                       <Link
                         href={item.href || '#'}
                         onClick={closeMobile}
-                        className="block py-4 text-2xl font-bold text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800"
+                        className="block py-4 text-2xl font-bold text-white border-b border-slate-800"
                       >
                         {getLabel(item)}
                       </Link>
@@ -277,7 +286,7 @@ export default function Navigation() {
                           key={child.id}
                           href={child.href || '#'}
                           onClick={closeMobile}
-                          className="flex items-center justify-between py-4 text-lg text-slate-600 dark:text-slate-400 hover:text-blue-500 transition-colors border-b border-slate-100 dark:border-slate-800"
+                          className="flex items-center justify-between py-4 text-lg text-slate-400 hover:text-blue-500 transition-colors border-b border-slate-800"
                         >
                           <span>{getLabel(child)}</span>
                         </Link>
@@ -289,20 +298,14 @@ export default function Navigation() {
             ))}
           </nav>
           
-          <div className="p-6 border-t border-slate-100 dark:border-slate-800">
+          <div className="p-6 border-t border-slate-800">
             <Link
               href="/kontakt"
               onClick={closeMobile}
               className="block w-full text-center px-6 py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-2xl transition-all text-lg"
             >
-              {t.nav.getStarted}
+              {contactInfo.headerButtonText}
             </Link>
-            
-            <div className="flex items-center justify-center gap-4 mt-6">
-              <button onClick={toggleLang} className="px-6 py-2 text-sm font-medium bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors">
-                {lang === 'da' ? 'EN' : 'DA'}
-              </button>
-            </div>
           </div>
         </div>
       </div>

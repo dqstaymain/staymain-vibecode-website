@@ -3,7 +3,6 @@
 import { useEffect, useRef, ReactNode } from 'react'
 import { ArrowRight, ChevronDown, ExternalLink } from 'lucide-react'
 import Link from 'next/link'
-import { useLanguage } from '@/lib/context'
 
 interface HeroProps {
   customContent?: Record<string, any>
@@ -51,7 +50,6 @@ export default function Hero({
   badge,
   alignment
 }: HeroProps) {
-  const { t, lang } = useLanguage()
   const orb1Ref = useRef<HTMLDivElement>(null)
   const orb2Ref = useRef<HTMLDivElement>(null)
   const orb3Ref = useRef<HTMLDivElement>(null)
@@ -105,8 +103,8 @@ export default function Hero({
     document.getElementById('services')?.scrollIntoView({ behavior: 'smooth' })
   }
 
-  const heroTitle = title || customContent?.title || t.hero.title
-  const heroDescription = description || customContent?.description || customContent?.subtitle || t.hero.subtitle
+  const heroTitle = title || customContent?.title || 'Vi skaber digitale oplevelser, der tæller.'
+  const heroDescription = description || customContent?.description || customContent?.subtitle || 'StayMain er et kreativt webbureau i Danmark. Vi kombinerer moderne design med teknisk ekspertise for at bygge websites, der leverer resultater.'
   const heroBadge = badge || customContent?.badge || 'Webbureau i Danmark'
   const heroShowStats = customContent?.showStats !== undefined ? customContent.showStats : showStats
   
@@ -152,14 +150,14 @@ export default function Hero({
   if (defaultButtons.length === 0) {
     defaultButtons.push(
       {
-        label: t.hero.cta1,
+        label: 'Se vores ydelser',
         href: '#services',
         onClick: scrollToServices,
         variant: 'secondary',
         icon: 'arrow'
       },
       {
-        label: t.hero.cta2,
+        label: 'Lad os tale sammen',
         href: '/kontakt',
         variant: 'primary',
         icon: 'arrow'
@@ -273,7 +271,7 @@ export default function Hero({
           </div>
         )}
 
-        <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl xl:text-7xl 2xl:text-8xl font-bold text-white leading-[1.1] mb-6 sm:mb-8 animate-fadeInUp">
+        <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl 2xl:text-7xl font-bold text-white leading-[1.1] mb-6 sm:mb-8 animate-fadeInUp">
           {heroTitle}
         </h1>
 
@@ -287,15 +285,15 @@ export default function Hero({
           <div className={`mt-12 sm:mt-16 lg:mt-20 flex flex-wrap gap-4 sm:gap-8 lg:gap-12 animate-fadeInUp ${heroAlignment === 'left' ? '' : 'justify-center'}`} style={{ animationDelay: '600ms' }}>
             <div className={heroAlignment === 'left' ? 'text-left' : 'text-center'}>
               <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">{customContent?.stat1Number || '50+'}</div>
-              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat1Label || (lang === 'da' ? 'Projekter' : 'Projects')}</div>
+              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat1Label || 'Projekter'}</div>
             </div>
             <div className={heroAlignment === 'left' ? 'text-left' : 'text-center'}>
               <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">{customContent?.stat2Number || '100%'}</div>
-              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat2Label || (lang === 'da' ? 'Tilfredse' : 'Satisfied')}</div>
+              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat2Label || 'Tilfredse'}</div>
             </div>
             <div className={heroAlignment === 'left' ? 'text-left' : 'text-center'}>
               <div className="text-2xl sm:text-3xl lg:text-4xl xl:text-5xl font-bold text-white mb-1">{customContent?.stat3Number || '5+'}</div>
-              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat3Label || (lang === 'da' ? 'Års erfaring' : 'Years experience')}</div>
+              <div className="text-white/50 text-xs sm:text-sm">{customContent?.stat3Label || 'Års erfaring'}</div>
             </div>
           </div>
         )}

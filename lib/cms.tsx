@@ -79,6 +79,12 @@ export interface CMSUser {
   email: string
 }
 
+export interface FooterLink {
+  id: string
+  label: string
+  href: string
+}
+
 export interface ContactInfo {
   logo?: string
   favicon?: string
@@ -87,6 +93,14 @@ export interface ContactInfo {
   email: string
   address: string
   cvr: string
+  headerButtonText: string
+  footerDescription: string
+  footerCol2Title: string
+  footerCol2Links: FooterLink[]
+  footerCol3Title: string
+  footerCol3Links: FooterLink[]
+  footerCol4Title: string
+  footerCol4Links: FooterLink[]
 }
 
 export interface Case {
@@ -219,7 +233,29 @@ const defaultContactInfo: ContactInfo = {
   phone: '+45 12 34 56 78',
   email: 'kontakt@staymain.dk',
   address: 'Hovedgaden 1, 1234 København',
-  cvr: '12345678'
+  cvr: '12345678',
+  headerButtonText: 'Kontakt os',
+  footerDescription: 'Moderne webdesign fra Danmark.',
+  footerCol2Title: 'Navigation',
+  footerCol2Links: [
+    { id: 'footer-nav-1', label: 'Ydelser', href: '#services' },
+    { id: 'footer-nav-2', label: 'Arbejde', href: '#work' },
+    { id: 'footer-nav-3', label: 'Om os', href: '#about' },
+    { id: 'footer-nav-4', label: 'Kontakt', href: '/kontakt' }
+  ],
+  footerCol3Title: 'Services',
+  footerCol3Links: [
+    { id: 'footer-svc-1', label: 'Hjemmesider', href: '#' },
+    { id: 'footer-svc-2', label: 'Webshops', href: '#' },
+    { id: 'footer-svc-3', label: 'SEO', href: '#' },
+    { id: 'footer-svc-4', label: 'Meta Ads', href: '#' }
+  ],
+  footerCol4Title: 'Sociale medier',
+  footerCol4Links: [
+    { id: 'footer-social-1', label: 'Facebook', href: '#' },
+    { id: 'footer-social-2', label: 'Instagram', href: '#' },
+    { id: 'footer-social-3', label: 'LinkedIn', href: '#' }
+  ]
 }
 
 const defaultCases: Case[] = []

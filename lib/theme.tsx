@@ -7,12 +7,14 @@ type Theme = 'light' | 'dark'
 interface ThemeContextType {
   theme: Theme
   toggleTheme: () => void
+  mounted: boolean
 }
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined)
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const [theme, setTheme] = useState<Theme>('light')
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
     const stored = localStorage.getItem('staymain_theme') as Theme | null
@@ -25,6 +27,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
       setTheme('dark')
       document.documentElement.classList.add('dark')
     }
+    setMounted(true)
   }, [])
 
   const toggleTheme = () => {
@@ -39,7 +42,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme, toggleTheme, mounted }}>
       {children}
     </ThemeContext.Provider>
   )

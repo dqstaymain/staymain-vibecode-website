@@ -1,6 +1,5 @@
 import type { Metadata } from 'next'
 import './globals.css'
-import { LanguageProvider } from '@/lib/context'
 import { CMSProvider } from '@/lib/cms'
 import { ThemeProvider } from '@/lib/theme'
 
@@ -18,11 +17,9 @@ export default function RootLayout({
     <html lang="da" suppressHydrationWarning>
       <body className="antialiased">
         <ThemeProvider>
-          <LanguageProvider>
-            <CMSProvider>
-              {children}
-            </CMSProvider>
-          </LanguageProvider>
+          <CMSProvider>
+            {children}
+          </CMSProvider>
         </ThemeProvider>
       </body>
     </html>

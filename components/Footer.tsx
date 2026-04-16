@@ -2,11 +2,9 @@
 
 import { Mail, Phone, MapPin, ArrowRight, FileText } from 'lucide-react'
 import Link from 'next/link'
-import { useLanguage } from '@/lib/context'
 import { useCMS } from '@/lib/cms'
 
 export default function Footer() {
-  const { t, lang } = useLanguage()
   const { contactInfo } = useCMS()
 
   const scrollToTop = () => {
@@ -24,96 +22,76 @@ export default function Footer() {
               <div className="text-2xl font-bold mb-4">{contactInfo.companyName}</div>
             )}
             <p className="text-white/60 text-sm mb-6">
-              {lang === 'da' 
-                ? 'Moderne webdesign fra Danmark.' 
-                : 'Modern web design from Denmark.'}
+              {contactInfo.footerDescription}
             </p>
-            <div className="flex items-center gap-1 text-white/40 text-xs">
-              <span className="px-2 py-0.5 bg-white/10 rounded">DK</span>
-              <span className="w-1 h-1 bg-white/40 rounded-full" />
-              <span className="px-2 py-0.5 bg-white/10 rounded">EN</span>
-            </div>
-          </div>
-
-          <div>
-            <h4 className="font-semibold mb-4 text-white/90">
-              {lang === 'da' ? 'Navigation' : 'Navigation'}
-            </h4>
-            <ul className="space-y-3">
-              <li>
-                <Link href="#services" className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
-                  {lang === 'da' ? 'Ydelser' : 'Services'}
-                </Link>
-              </li>
-              <li>
-                <Link href="#work" className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
-                  {lang === 'da' ? 'Arbejde' : 'Work'}
-                </Link>
-              </li>
-              <li>
-                <Link href="#about" className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
-                  {lang === 'da' ? 'Om os' : 'About'}
-                </Link>
-              </li>
-              <li>
-                <Link href="/kontakt" className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
-                  {lang === 'da' ? 'Kontakt' : 'Contact'}
-                </Link>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold mb-4 text-white/90">
-              {lang === 'da' ? 'Services' : 'Services'}
-            </h4>
-            <ul className="space-y-3">
-              <li>
-                <span className="text-white/60 text-sm">
-                  {lang === 'da' ? 'Hjemmesider' : 'Websites'}
-                </span>
-              </li>
-              <li>
-                <span className="text-white/60 text-sm">
-                  {lang === 'da' ? 'Webshops' : 'Webshops'}
-                </span>
-              </li>
-              <li>
-                <span className="text-white/60 text-sm">SEO</span>
-              </li>
-              <li>
-                <span className="text-white/60 text-sm">Meta Ads</span>
-              </li>
-            </ul>
-          </div>
-
-          <div>
-            <h4 className="font-semibold mb-4 text-white/90">
-              {lang === 'da' ? 'Kontakt' : 'Contact'}
-            </h4>
-            <ul className="space-y-3">
+            <ul className="space-y-2">
               <li className="flex items-center gap-2 text-white/60 text-sm">
-                <Mail size={16} />
+                <Mail size={14} />
                 <a href={`mailto:${contactInfo.email}`} className="hover:text-[#2563EB] transition-colors">
                   {contactInfo.email}
                 </a>
               </li>
               <li className="flex items-center gap-2 text-white/60 text-sm">
-                <Phone size={16} />
+                <Phone size={14} />
                 <a href={`tel:${contactInfo.phone.replace(/\s/g, '')}`} className="hover:text-[#2563EB] transition-colors">
                   {contactInfo.phone}
                 </a>
               </li>
               <li className="flex items-center gap-2 text-white/60 text-sm">
-                <MapPin size={16} />
+                <MapPin size={14} />
                 <span>{contactInfo.address}</span>
               </li>
               {contactInfo.cvr && (
                 <li className="flex items-center gap-2 text-white/60 text-sm">
-                  <FileText size={16} />
+                  <FileText size={14} />
                   <span>CVR: {contactInfo.cvr}</span>
                 </li>
               )}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="font-semibold mb-4 text-white/90">
+              {contactInfo.footerCol2Title}
+            </h4>
+            <ul className="space-y-3">
+              {(contactInfo.footerCol2Links || []).map(link => (
+                <li key={link.id}>
+                  <Link href={link.href} className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="font-semibold mb-4 text-white/90">
+              {contactInfo.footerCol3Title}
+            </h4>
+            <ul className="space-y-3">
+              {(contactInfo.footerCol3Links || []).map(link => (
+                <li key={link.id}>
+                  <Link href={link.href} className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          <div>
+            <h4 className="font-semibold mb-4 text-white/90">
+              {contactInfo.footerCol4Title}
+            </h4>
+            <ul className="space-y-3">
+              {(contactInfo.footerCol4Links || []).map(link => (
+                <li key={link.id}>
+                  <Link href={link.href} className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
+                    {link.label}
+                  </Link>
+                </li>
+              ))}
             </ul>
           </div>
         </div>
@@ -121,13 +99,13 @@ export default function Footer() {
         <div className="pt-8 border-t border-white/10">
           <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
             <p className="text-white/40 text-sm">
-              © 2024 {contactInfo.companyName}. {lang === 'da' ? 'Alle rettigheder forbeholdes.' : 'All rights reserved.'}
+              © {new Date().getFullYear()} {contactInfo.companyName}. Alle rettigheder forbeholdes.
             </p>
             <button
               onClick={scrollToTop}
               className="flex items-center gap-2 text-white/60 hover:text-[#2563EB] transition-colors text-sm"
             >
-              {lang === 'da' ? 'Til toppen' : 'Back to top'}
+              Til toppen
               <ArrowRight size={16} className="rotate-[-90deg]" />
             </button>
           </div>
