@@ -60,6 +60,7 @@ export interface CMSPage {
   meta?: {
     title?: string
     description?: string
+    image?: string
   }
 }
 
@@ -142,7 +143,7 @@ interface CMSContextType {
   updatePageDetails: (oldSlug: string, title: string, newSlug: string, parentSlug?: string) => boolean
   deletePage: (slug: string) => void
   updatePage: (slug: string, blocks: CMSBlock[]) => void
-  updatePageMeta: (slug: string, meta: { title?: string; description?: string }) => void
+  updatePageMeta: (slug: string, meta: { title?: string; description?: string; image?: string }) => void
   addBlock: (pageSlug: string, block: CMSBlock, index?: number) => void
   removeBlock: (pageSlug: string, blockId: string) => void
   moveBlock: (pageSlug: string, fromIndex: number, toIndex: number) => void
@@ -597,7 +598,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     })
   }
 
-  const updatePageMeta = (slug: string, meta: { title?: string; description?: string }) => {
+  const updatePageMeta = (slug: string, meta: { title?: string; description?: string; image?: string }) => {
     setPages(prev => {
       const newPages = prev.map(p => 
         p.slug === slug ? { ...p, meta: { ...p.meta, ...meta } } : p

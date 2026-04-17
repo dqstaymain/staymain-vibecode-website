@@ -131,6 +131,7 @@ function Dashboard() {
   const [showMediaPicker, setShowMediaPicker] = useState(false)
   const [mediaPickerTarget, setMediaPickerTarget] = useState<'logo' | 'favicon' | 'image' | 'video'>('logo')
   const [mediaPickerConfig, setMediaPickerConfig] = useState<{filter: string, fieldKey: string, blockId: string | null} | null>(null)
+  const [selectingMetaImage, setSelectingMetaImage] = useState(false)
 
   const handleOpenMediaPicker = useCallback((filter: string, fieldKey: string) => {
     setMediaPickerTarget(filter as any)
@@ -491,7 +492,7 @@ function Dashboard() {
                 <span className="text-sm font-medium">Kundeudtalelser</span>
               </button>
               <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(true); setEditingMediaLibrary(false) }}
+                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(true); setEditingMediaLibrary(false); setEditingHeaderFooter(false) }}
                 className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
                   editingCompanyLogos
                     ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -1768,9 +1769,15 @@ function Dashboard() {
           page={currentPage}
           onClose={() => setEditingMeta(false)}
           onSave={(meta) => {
-            updatePageMeta(selectedPage!, meta)
+            const { slug, ...metaWithoutSlug } = meta
+            updatePageMeta(selectedPage!, metaWithoutSlug)
+            if (slug && slug !== selectedPage) {
+              updatePageDetails(selectedPage!, currentPage.title, slug, currentPage.parentSlug)
+              setSelectedPage(slug)
+            }
             setEditingMeta(false)
           }}
+          onSelectImage={() => setSelectingMetaImage(true)}
         />
       )}
 
@@ -1877,7 +1884,10 @@ function Dashboard() {
         <MediaPickerModal
           filter={mediaPickerTarget === 'logo' || mediaPickerTarget === 'favicon' ? 'image' : mediaPickerTarget}
           onSelect={(url) => {
-            if (mediaPickerTarget === 'logo') {
+            if (selectingMetaImage) {
+              updatePageMeta(selectedPage!, { image: url })
+              setSelectingMetaImage(false)
+            } else if (mediaPickerTarget === 'logo') {
               updateContactForm({ logo: url })
             } else if (mediaPickerTarget === 'favicon') {
               updateContactForm({ favicon: url })
@@ -1900,6 +1910,7 @@ function Dashboard() {
           onClose={() => {
             setShowMediaPicker(false)
             setMediaPickerConfig(null)
+            setSelectingMetaImage(false)
           }}
         />
       )}
@@ -2616,12 +2627,14 @@ function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pag
   )
 }
 
-function MetaEditModal({ page, onClose, onSave }: { page: any; onClose: () => void; onSave: (meta: { title: string; description: string }) => void }) {
+function MetaEditModal({ page, onClose, onSave, onSelectImage }: { page: any; onClose: () => void; onSave: (meta: { title: string; description: string; image: string; slug: string }) => void; onSelectImage?: () => void }) {
   const [metaTitle, setMetaTitle] = useState(page.meta?.title || '')
   const [metaDescription, setMetaDescription] = useState(page.meta?.description || '')
+  const [metaImage, setMetaImage] = useState(page.meta?.image || '')
+  const [slug, setSlug] = useState(page.slug || '')
 
   const handleSave = () => {
-    onSave({ title: metaTitle, description: metaDescription })
+    onSave({ title: metaTitle, description: metaDescription, image: metaImage, slug })
   }
 
   return (
@@ -2632,6 +2645,16 @@ function MetaEditModal({ page, onClose, onSave }: { page: any; onClose: () => vo
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl">×</button>
         </div>
         <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Slug (URL)</label>
+            <input
+              type="text"
+              value={slug}
+              onChange={e => setSlug(e.target.value)}
+              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+              placeholder={page.title?.toLowerCase().replace(/\s+/g, '-') || ''}
+            />
+          </div>
           <div>
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Meta Titel</label>
             <input
@@ -2652,12 +2675,31 @@ function MetaEditModal({ page, onClose, onSave }: { page: any; onClose: () => vo
               placeholder="Kort beskrivelse af siden..."
             />
           </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Meta Billede</label>
+            <div className="flex items-center gap-3">
+              <div className="flex-1 h-24 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 overflow-hidden bg-slate-50 dark:bg-slate-700">
+                {metaImage ? (
+                  <img src={metaImage} alt="Meta" className="w-full h-full object-cover" />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm">Ingen billede valgt</div>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => onSelectImage?.()}
+                className="px-3 py-2 text-sm bg-slate-100 dark:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-500 transition-colors"
+              >
+                Vælg billede
+              </button>
+            </div>
+          </div>
           <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Google Søgning Preview</label>
             <div className="bg-white dark:bg-slate-100 rounded-lg p-4 border border-slate-200">
               <div className="flex flex-col">
                 <span className="text-sm text-slate-500 truncate">
-                  staymain.dk{page.slug === 'home' ? '' : `/${page.slug}`}
+                  staymain.dk{slug === 'home' ? '' : `/${slug}`}
                 </span>
                 <span className="text-xl text-blue-700 hover:underline cursor-pointer truncate">
                   {metaTitle || `${page.title} | StayMain`}
