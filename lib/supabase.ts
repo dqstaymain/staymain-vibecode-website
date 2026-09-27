@@ -2,11 +2,19 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js'
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://sacipjtmvvyazwxwvatm.supabase.co'
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhY2lwanTtdnZ5YXp3eHd2YXRtIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU5OTY0NDIsImV4cCI6MjA5MTU3MjQ0Mn0._IqB5I4yXHZ-ukcIJ9Vwqg25NMtzDg6l-is9H09t1SY'
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNhY2lwanTtdnZ5YXp3eHd2YXRtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NTk5NjQ0MiwiZXhwIjoyMDkxNTcyNDQyfQ.O-zwTiNYhVXJ8tsSFjwSDRiwTSumRrclVTT4fZf5GFQ'
 
 export const supabase: SupabaseClient = createClient(supabaseUrl, supabaseAnonKey)
 
-export const supabaseAdmin: SupabaseClient = createClient(supabaseUrl, supabaseServiceKey, { auth: { persistSession: false } })
+/**
+ * Authorization header for calls to our own /api routes.
+ * The service-role key deliberately lives only in server-side env, so every
+ * privileged endpoint has to authenticate the caller with their session token.
+ */
+export async function authHeaders(): Promise<Record<string, string>> {
+  const { data } = await supabase.auth.getSession()
+  const token = data.session?.access_token
+  return token ? { Authorization: `Bearer ${token}` } : {}
+}
 
 export interface DBUser {
   id: string
@@ -94,16 +102,47 @@ export async function loadCMSPages(): Promise<any[] | null> {
   }
 }
 
+/**
+ * Ordering used to rely on `.order('id')` over ids like `nav-1712...`, so manual
+ * reordering was lost on reload. A `position` column fixes that, but the column
+ * has to be added to Supabase separately, so its availability is probed once and
+ * cached. Until the migration is applied everything behaves exactly as before.
+ */
+const positionSupport: Record<string, boolean> = {}
+
+function supportsPosition(table: string): boolean {
+  return positionSupport[table] === true
+}
+
+/** Orders by `position` when available, otherwise falls back to `id`. */
+async function selectOrdered(table: string, columns = '*'): Promise<{ data: any[] | null; error: any }> {
+  if (supportsPosition(table)) {
+    const attempt = await supabase.from(table).select(columns).order('position')
+    if (!attempt.error) return attempt
+    positionSupport[table] = false
+  } else {
+    // Probe once; the error tells us the column isn't there yet.
+    const probe = await supabase.from(table).select(columns).order('position')
+    if (!probe.error) {
+      positionSupport[table] = true
+      return probe
+    }
+  }
+  return supabase.from(table).select(columns).order('id')
+}
+
 export async function saveCMSNavigation(navigation: any[]): Promise<boolean> {
   try {
-    const formatted = navigation.map(item => ({
+    const withPosition = supportsPosition('cms_navigation')
+    const formatted = navigation.map((item, index) => ({
       id: item.id,
       label: item.label,
       href: item.href || null,
       page_slug: item.pageSlug || null,
       parent_nav_id: item.parentNavId || null,
       children: item.children || null,
-      new_tab: item.newTab || null
+      new_tab: item.newTab || null,
+      ...(withPosition ? { position: index } : {}),
     }))
     const { error } = await supabase.from('cms_navigation').upsert(formatted, { onConflict: 'id' })
     if (error) throw error
@@ -116,7 +155,7 @@ export async function saveCMSNavigation(navigation: any[]): Promise<boolean> {
 
 export async function loadCMSNavigation(): Promise<any[] | null> {
   try {
-    const { data, error } = await supabase.from('cms_navigation').select('*').order('id')
+    const { data, error } = await selectOrdered('cms_navigation')
     if (error || !data || data.length === 0) return null
     return data.map(item => ({
       id: item.id,
@@ -157,11 +196,13 @@ export async function loadCMSContactInfo(): Promise<any | null> {
 
 export async function saveCMSCases(cases: any[]): Promise<boolean> {
   try {
-    const formatted = cases.map(c => ({
+    const withPosition = supportsPosition('cms_cases')
+    const formatted = cases.map((c, index) => ({
       id: c.id,
       title: c.title,
       image: c.image,
-      link: c.link || null
+      link: c.link || null,
+      ...(withPosition ? { position: index } : {}),
     }))
     const { error } = await supabase.from('cms_cases').upsert(formatted, { onConflict: 'id' })
     if (error) throw error
@@ -174,7 +215,7 @@ export async function saveCMSCases(cases: any[]): Promise<boolean> {
 
 export async function loadCMSCases(): Promise<any[] | null> {
   try {
-    const { data, error } = await supabase.from('cms_cases').select('*')
+    const { data, error } = await selectOrdered('cms_cases')
     if (error || !data) return null
     return data.map(item => ({
       id: item.id,
@@ -190,12 +231,14 @@ export async function loadCMSCases(): Promise<any[] | null> {
 
 export async function saveCMSTestimonials(testimonials: any[]): Promise<boolean> {
   try {
-    const formatted = testimonials.map(t => ({
+    const withPosition = supportsPosition('cms_testimonials')
+    const formatted = testimonials.map((t, index) => ({
       id: t.id,
       name: t.name,
       role: t.role,
       content: t.content,
-      image: t.image
+      image: t.image,
+      ...(withPosition ? { position: index } : {}),
     }))
     const { error } = await supabase.from('cms_testimonials').upsert(formatted)
     if (error) throw error
@@ -208,7 +251,7 @@ export async function saveCMSTestimonials(testimonials: any[]): Promise<boolean>
 
 export async function loadCMSTestimonials(): Promise<any[] | null> {
   try {
-    const { data, error } = await supabase.from('cms_testimonials').select('*')
+    const { data, error } = await selectOrdered('cms_testimonials')
     if (error || !data) return null
     return data.map(item => ({
       id: item.id,
@@ -225,7 +268,9 @@ export async function loadCMSTestimonials(): Promise<any[] | null> {
 
 export async function saveCMSCompanyLogos(logos: any[]): Promise<boolean> {
   try {
-    const { error } = await supabase.from('cms_company_logos').upsert(logos)
+    const withPosition = supportsPosition('cms_company_logos')
+    const formatted = logos.map((l, index) => ({ ...l, ...(withPosition ? { position: index } : {}) }))
+    const { error } = await supabase.from('cms_company_logos').upsert(formatted)
     if (error) throw error
     return true
   } catch (error) {
@@ -236,7 +281,7 @@ export async function saveCMSCompanyLogos(logos: any[]): Promise<boolean> {
 
 export async function loadCMSCompanyLogos(): Promise<any[] | null> {
   try {
-    const { data, error } = await supabase.from('cms_company_logos').select('*')
+    const { data, error } = await selectOrdered('cms_company_logos')
     if (error || !data) return null
     return data
   } catch (error) {
@@ -252,6 +297,19 @@ export async function deleteCMSPage(slug: string): Promise<boolean> {
     return true
   } catch (error) {
     console.error('Error deleting page:', error)
+    return false
+  }
+}
+
+/** Removes a page and every descendant in one round trip. */
+export async function deleteCMSPages(slugs: string[]): Promise<boolean> {
+  if (slugs.length === 0) return true
+  try {
+    const { error } = await supabase.from('cms_pages').delete().in('slug', slugs)
+    if (error) throw error
+    return true
+  } catch (error) {
+    console.error('Error deleting pages:', error)
     return false
   }
 }

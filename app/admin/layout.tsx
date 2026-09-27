@@ -1,4 +1,5 @@
 import { CMSProvider } from '@/lib/cms'
+import './admin.css'
 
 export default function AdminLayout({
   children,
@@ -7,7 +8,7 @@ export default function AdminLayout({
 }) {
   return (
     <CMSProvider>
-      {children}
+      <div className="admin-shell min-h-screen">{children}</div>
     </CMSProvider>
   )
 }

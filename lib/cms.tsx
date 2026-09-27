@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { supabase, supabaseAdmin, saveCMSPages, loadCMSPages, saveCMSNavigation, loadCMSNavigation, saveCMSContactInfo, loadCMSContactInfo, saveCMSCases, loadCMSCases, saveCMSTestimonials, loadCMSTestimonials, saveCMSCompanyLogos, loadCMSCompanyLogos, deleteCMSPage, deleteCMSNavigation, deleteCMSCase, deleteCMSTestimonial, deleteCMSCompanyLogo } from '@/lib/supabase'
+import { supabase, authHeaders, saveCMSPages, loadCMSPages, saveCMSNavigation, loadCMSNavigation, saveCMSContactInfo, loadCMSContactInfo, saveCMSCases, loadCMSCases, saveCMSTestimonials, loadCMSTestimonials, saveCMSCompanyLogos, loadCMSCompanyLogos, deleteCMSPages, deleteCMSNavigation, deleteCMSCase, deleteCMSTestimonial, deleteCMSCompanyLogo } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
 function generateId(prefix: string = 'id'): string {
@@ -376,66 +376,78 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const [hasLoadedFromCloud, setHasLoadedFromCloud] = useState(false)
 
   useEffect(() => {
+    let cancelled = false
+
     const initSupabase = async () => {
-      const [cloudPages, cloudNav, cloudContact, cloudCases, cloudTestimonials, cloudLogos] = await Promise.all([
-        loadCMSPages(),
-        loadCMSNavigation(),
-        loadCMSContactInfo(),
-        loadCMSCases(),
-        loadCMSTestimonials(),
-        loadCMSCompanyLogos()
-      ])
-      
-      if (cloudPages !== null) {
-        const finalPages = cloudPages.length > 0 ? cloudPages : defaultPages
-        setPages(finalPages)
-        localStorage.setItem('cms_pages', JSON.stringify(finalPages))
-      } else {
-        setPages(getInitialPages())
+      // Without this the whole site hangs on the loading skeleton forever if any
+      // single read throws (e.g. localStorage quota, malformed cloud row).
+      try {
+        const [cloudPages, cloudNav, cloudContact, cloudCases, cloudTestimonials, cloudLogos] = await Promise.all([
+          loadCMSPages(),
+          loadCMSNavigation(),
+          loadCMSContactInfo(),
+          loadCMSCases(),
+          loadCMSTestimonials(),
+          loadCMSCompanyLogos()
+        ])
+
+        if (cancelled) return
+
+        if (cloudPages !== null) {
+          const finalPages = cloudPages.length > 0 ? cloudPages : defaultPages
+          setPages(finalPages)
+          localStorage.setItem('cms_pages', JSON.stringify(finalPages))
+        } else {
+          setPages(getInitialPages())
+        }
+
+        if (cloudNav !== null) {
+          const finalNav = cloudNav.length > 0 ? cloudNav : []
+          setNavigation(finalNav)
+          localStorage.setItem('cms_navigation', JSON.stringify(finalNav))
+        } else {
+          setNavigation(getInitialNavigation())
+        }
+
+        if (cloudContact !== null) {
+          const finalContact = { ...getInitialContactInfo(), ...cloudContact }
+          setContactInfo(finalContact)
+          localStorage.setItem('cms_contact_info', JSON.stringify(finalContact))
+        } else {
+          setContactInfo(getInitialContactInfo())
+        }
+
+        if (cloudCases !== null) {
+          const finalCases = cloudCases.length > 0 ? cloudCases : []
+          setCases(finalCases)
+          localStorage.setItem('cms_cases', JSON.stringify(finalCases))
+        } else {
+          setCases(getInitialCases())
+        }
+
+        if (cloudTestimonials !== null) {
+          const finalTestimonials = cloudTestimonials.length > 0 ? cloudTestimonials : []
+          setTestimonials(finalTestimonials)
+          localStorage.setItem('cms_testimonials', JSON.stringify(finalTestimonials))
+        } else {
+          setTestimonials(getInitialTestimonials())
+        }
+
+        if (cloudLogos !== null) {
+          const finalLogos = cloudLogos.length > 0 ? cloudLogos : []
+          setCompanyLogos(finalLogos)
+          localStorage.setItem('cms_company_logos', JSON.stringify(finalLogos))
+        } else {
+          setCompanyLogos(getInitialCompanyLogos())
+        }
+      } catch (error) {
+        console.error('Failed to initialise CMS from cloud:', error)
+      } finally {
+        if (cancelled) return
+        setHasLoadedFromCloud(true)
+        setSupabaseReady(true)
+        setIsLoading(false)
       }
-      
-      if (cloudNav !== null) {
-        const finalNav = cloudNav.length > 0 ? cloudNav : []
-        setNavigation(finalNav)
-        localStorage.setItem('cms_navigation', JSON.stringify(finalNav))
-      } else {
-        setNavigation(getInitialNavigation())
-      }
-      
-      if (cloudContact !== null) {
-        setContactInfo(cloudContact)
-        localStorage.setItem('cms_contact_info', JSON.stringify(cloudContact))
-      } else {
-        setContactInfo(getInitialContactInfo())
-      }
-      
-      if (cloudCases !== null) {
-        const finalCases = cloudCases.length > 0 ? cloudCases : []
-        setCases(finalCases)
-        localStorage.setItem('cms_cases', JSON.stringify(finalCases))
-      } else {
-        setCases(getInitialCases())
-      }
-      
-      if (cloudTestimonials !== null) {
-        const finalTestimonials = cloudTestimonials.length > 0 ? cloudTestimonials : []
-        setTestimonials(finalTestimonials)
-        localStorage.setItem('cms_testimonials', JSON.stringify(finalTestimonials))
-      } else {
-        setTestimonials(getInitialTestimonials())
-      }
-      
-      if (cloudLogos !== null) {
-        const finalLogos = cloudLogos.length > 0 ? cloudLogos : []
-        setCompanyLogos(finalLogos)
-        localStorage.setItem('cms_company_logos', JSON.stringify(finalLogos))
-      } else {
-        setCompanyLogos(getInitialCompanyLogos())
-      }
-      
-      setHasLoadedFromCloud(true)
-      setSupabaseReady(true)
-      setIsLoading(false)
     }
 
     initSupabase()
@@ -444,42 +456,43 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       setCurrentUser(session?.user ?? null)
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      subscription.unsubscribe()
+    }
   }, [])
 
+  // These persist local edits. The `length > 0` guards that used to be here
+  // meant deleting the last case/testimonial/logo was never written back, so it
+  // reappeared on reload. Gate purely on the cloud read having finished.
   useEffect(() => {
-    if (hasLoadedFromCloud && pages.length > 0) {
-      localStorage.setItem('cms_pages', JSON.stringify(pages))
-      saveCMSPages(pages)
-    }
+    if (!hasLoadedFromCloud) return
+    localStorage.setItem('cms_pages', JSON.stringify(pages))
+    saveCMSPages(pages)
   }, [pages, hasLoadedFromCloud])
 
   useEffect(() => {
-    if (supabaseReady && navigation.length >= 0) {
-      localStorage.setItem('cms_navigation', JSON.stringify(navigation))
-      saveCMSNavigation(navigation)
-    }
-  }, [navigation, supabaseReady])
+    if (!hasLoadedFromCloud) return
+    localStorage.setItem('cms_navigation', JSON.stringify(navigation))
+    saveCMSNavigation(navigation)
+  }, [navigation, hasLoadedFromCloud])
 
   useEffect(() => {
-    if (hasLoadedFromCloud && cases.length > 0) {
-      localStorage.setItem('cms_cases', JSON.stringify(cases))
-      saveCMSCases(cases)
-    }
+    if (!hasLoadedFromCloud) return
+    localStorage.setItem('cms_cases', JSON.stringify(cases))
+    saveCMSCases(cases)
   }, [cases, hasLoadedFromCloud])
 
   useEffect(() => {
-    if (hasLoadedFromCloud && testimonials.length > 0) {
-      localStorage.setItem('cms_testimonials', JSON.stringify(testimonials))
-      saveCMSTestimonials(testimonials)
-    }
+    if (!hasLoadedFromCloud) return
+    localStorage.setItem('cms_testimonials', JSON.stringify(testimonials))
+    saveCMSTestimonials(testimonials)
   }, [testimonials, hasLoadedFromCloud])
 
   useEffect(() => {
-    if (hasLoadedFromCloud && companyLogos.length > 0) {
-      localStorage.setItem('cms_company_logos', JSON.stringify(companyLogos))
-      saveCMSCompanyLogos(companyLogos)
-    }
+    if (!hasLoadedFromCloud) return
+    localStorage.setItem('cms_company_logos', JSON.stringify(companyLogos))
+    saveCMSCompanyLogos(companyLogos)
   }, [companyLogos, hasLoadedFromCloud])
 
   useEffect(() => {
@@ -490,22 +503,37 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   }, [contactInfo, hasLoadedFromCloud])
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
+    // Supabase rejects on network failure rather than returning an error object,
+    // so without this the caller never gets a { success: false } result.
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      })
 
-    if (error) {
-      return { success: false, error: error.message }
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      if (!data.user) {
+        return { success: false, error: 'Kunne ikke logge ind' }
+      }
+
+      setCurrentUser(data.user)
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Der opstod en fejl' }
     }
-
-    setCurrentUser(data.user)
-    return { success: true }
   }
 
   const logout = async () => {
-    await supabase.auth.signOut()
-    setCurrentUser(null)
+    try {
+      await supabase.auth.signOut()
+    } catch (err) {
+      console.error('Sign out failed:', err)
+    } finally {
+      setCurrentUser(null)
+    }
   }
 
   const createPage = (title: string, slug?: string, parentSlug?: string): CMSPage | null => {
@@ -522,7 +550,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       parentSlug,
       meta: { title: `${title} | StayMain`, description: '' },
       blocks: [
-        { id: `text-${Date.now()}`, type: 'text', content: { title, body: '' } }
+        { id: generateId('text'), type: 'text', content: { title, body: '' } }
       ]
     }
     
@@ -537,8 +565,12 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const deletePage = (slug: string) => {
     if (slug === 'home') return
     setPages(prev => {
-      const newPages = prev.filter(p => p.slug !== slug && p.parentSlug !== slug)
-      deleteCMSPage(slug)
+      // Slugs are cumulative, so descendants are identified by prefix. Filtering
+      // on parentSlug alone only caught direct children and orphaned the rest.
+      const isSelfOrDescendant = (p: CMSPage) => p.slug === slug || p.slug.startsWith(`${slug}/`)
+      const removed = prev.filter(isSelfOrDescendant).map(p => p.slug)
+      const newPages = prev.filter(p => !isSelfOrDescendant(p))
+      deleteCMSPages(removed)
       saveCMSPages(newPages)
       return newPages
     })
@@ -546,47 +578,62 @@ export function CMSProvider({ children }: { children: ReactNode }) {
 
   const updatePageDetails = (oldSlug: string, title: string, newSlug: string, parentSlug?: string): boolean => {
     const fullNewSlug = parentSlug ? `${parentSlug}/${newSlug}` : newSlug
-    
+
     if (pages.some(p => p.slug === fullNewSlug && p.slug !== oldSlug)) {
       return false
     }
-    
+
+    // Any slug beginning with `oldSlug/` is a descendant and moves with the
+    // rename, otherwise a/b -> a/x left the child at a/b/c pointing at nothing.
+    const rewriteSlug = (slug: string): string => {
+      if (slug === oldSlug) return fullNewSlug
+      if (slug.startsWith(`${oldSlug}/`)) return fullNewSlug + slug.slice(oldSlug.length)
+      return slug
+    }
+    const rewriteOptionalSlug = (slug?: string) => (slug === undefined ? undefined : rewriteSlug(slug))
+
     setPages(prev => {
       const newPages = prev.map(p => {
-        if (p.slug === oldSlug) {
-          return { ...p, title, slug: fullNewSlug, parentSlug }
-        }
-        if (p.parentSlug === oldSlug) {
-          return { ...p, parentSlug: fullNewSlug }
-        }
-        return p
+        const nextSlug = rewriteSlug(p.slug)
+        const nextParent = rewriteOptionalSlug(p.parentSlug)
+        if (nextSlug === p.slug && nextParent === p.parentSlug) return p
+        return { ...p, slug: nextSlug, parentSlug: nextParent, ...(p.slug === oldSlug ? { title } : {}) }
       })
       saveCMSPages(newPages)
       return newPages
     })
-    
+
     setNavigation(prev => {
-      const newNav = prev.map(item => {
-        if (item.pageSlug === oldSlug) {
-          return { ...item, href: `/${fullNewSlug}`, pageSlug: fullNewSlug }
-        }
-        if (item.children) {
+      const rewriteNav = (items: NavItem[]): NavItem[] =>
+        items.map(item => {
+          const nextPageSlug = item.pageSlug ? rewriteSlug(item.pageSlug) : item.pageSlug
+          const currentHrefPath = item.href?.startsWith('/') ? item.href.slice(1) : undefined
+          const nextHrefPath = currentHrefPath !== undefined ? rewriteSlug(currentHrefPath) : undefined
+
+          const pageSlugChanged = nextPageSlug !== item.pageSlug
+          const hrefChanged = nextHrefPath !== currentHrefPath
+
+          const children = item.children?.length ? rewriteNav(item.children) : item.children
+
           return {
             ...item,
-            children: item.children.map(child => {
-              if (child.pageSlug === oldSlug) {
-                return { ...child, href: `/${fullNewSlug}`, pageSlug: fullNewSlug }
-              }
-              return child
-            })
+            ...(pageSlugChanged ? { pageSlug: nextPageSlug } : {}),
+            // href follows pageSlug when there is one, otherwise follow the
+            // literal path. The old code only handled pageSlug matches, so a nav
+            // item pointing at a renamed grandchild kept its stale href.
+            ...(pageSlugChanged
+              ? { href: nextPageSlug ? `/${nextPageSlug}` : item.href }
+              : hrefChanged
+                ? { href: `/${nextHrefPath}` }
+                : {}),
+            ...(children ? { children } : {}),
           }
-        }
-        return item
-      })
+        })
+      const newNav = rewriteNav(prev)
       saveCMSNavigation(newNav)
       return newNav
     })
-    
+
     return true
   }
 
@@ -644,6 +691,11 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     setPages(prev => {
       const newPages = prev.map(p => {
         if (p.slug === pageSlug) {
+          // splice(-1, 1) removes the *last* element, so an out-of-range
+          // fromIndex silently relocated the wrong block.
+          if (fromIndex < 0 || fromIndex >= p.blocks.length) return p
+          if (toIndex < 0 || toIndex > p.blocks.length) return p
+          if (fromIndex === toIndex) return p
           const newBlocks = [...p.blocks]
           const [removed] = newBlocks.splice(fromIndex, 1)
           newBlocks.splice(toIndex, 0, removed)
@@ -662,7 +714,9 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         if (p.slug === pageSlug) {
           return {
             ...p,
-            blocks: p.blocks.map(b => b.id === blockId ? { ...b, content: { ...b.content, ...content } } : b)
+            // Replace content wholesale so removed keys stay removed.
+            // A shallow merge here would resurrect deleted fields.
+            blocks: p.blocks.map(b => b.id === blockId ? { ...b, content } : b)
           }
         }
         return p
@@ -677,14 +731,37 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     setNavigation(nav)
   }
 
-  const addNavItem = (item: NavItem) => {
+  const addNavItem = (item: NavItem, parentNavId?: string) => {
     const normalizedItem = {
       ...item,
       href: item.href?.startsWith('/') ? item.href : `/${item.href || ''}`
     }
-    
+
     setNavigation(prev => {
-      const newNav = [...prev, normalizedItem]
+      if (!parentNavId) {
+        const newNav = [...prev, normalizedItem]
+        saveCMSNavigation(newNav)
+        return newNav
+      }
+
+      // The second argument used to be ignored, so "add sub-item" appended to
+      // the top level instead of nesting under the given parent.
+      const addToParent = (items: NavItem[]): NavItem[] =>
+        items.map(existing => {
+          if (existing.id === parentNavId) {
+            return {
+              ...existing,
+              type: 'dropdown',
+              children: [...(existing.children || []), { ...normalizedItem, parentNavId: undefined }],
+            }
+          }
+          if (existing.children?.length) {
+            return { ...existing, children: addToParent(existing.children) }
+          }
+          return existing
+        })
+
+      const newNav = addToParent(prev)
       saveCMSNavigation(newNav)
       return newNav
     })
@@ -701,6 +778,9 @@ export function CMSProvider({ children }: { children: ReactNode }) {
 
   const moveNavItem = (fromIndex: number, toIndex: number) => {
     setNavigation(prev => {
+      if (fromIndex < 0 || fromIndex >= prev.length) return prev
+      if (toIndex < 0 || toIndex > prev.length) return prev
+      if (fromIndex === toIndex) return prev
       const newNav = [...prev]
       const [removed] = newNav.splice(fromIndex, 1)
       newNav.splice(toIndex, 0, removed)
@@ -756,16 +836,26 @@ export function CMSProvider({ children }: { children: ReactNode }) {
 
   const removeNavItemFromParent = (itemId: string) => {
     setNavigation(prev => {
-      const newNav = prev.map(item => {
-        if (item.children?.some(c => c.id === itemId)) {
-          return {
-            ...item,
-            children: item.children?.filter(c => c.id !== itemId),
-            type: (item.children?.length || 0) <= 1 ? 'link' as const : item.type
+      // Recursive: a second-level child could be edited but not removed.
+      const removeFrom = (items: NavItem[]): NavItem[] =>
+        items.map(item => {
+          if (item.children?.some(c => c.id === itemId)) {
+            const remaining = item.children.filter(c => c.id !== itemId)
+            return {
+              ...item,
+              // Normalise to undefined, not []: an empty array is truthy and was
+              // persisted as a childless 'dropdown' that renders a dead button.
+              children: remaining.length > 0 ? remaining : undefined,
+              type: remaining.length > 0 ? item.type : 'link' as const
+            }
           }
-        }
-        return item
-      })
+          if (item.children?.length) {
+            return { ...item, children: removeFrom(item.children) }
+          }
+          return item
+        })
+
+      const newNav = removeFrom(prev)
       saveCMSNavigation(newNav)
       return newNav
     })
@@ -866,7 +956,9 @@ export function CMSProvider({ children }: { children: ReactNode }) {
           return item
         })
       } else {
-        newNav = [...newNav, { ...child, parentNavId: undefined }]
+        // Use the normalized item, otherwise promoting a submenu to the top
+        // level skips href normalisation and can end up with href: undefined.
+        newNav = [...newNav, { ...normalizedChild, parentNavId: undefined }]
       }
       saveCMSNavigation(newNav)
       return newNav
@@ -877,6 +969,9 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     setNavigation(prev => {
       const newNav = prev.map(item => {
         if (item.id === parentId && item.children) {
+          if (fromIndex < 0 || fromIndex >= item.children.length) return item
+          if (toIndex < 0 || toIndex > item.children.length) return item
+          if (fromIndex === toIndex) return item
           const newChildren = [...item.children]
           const [removed] = newChildren.splice(fromIndex, 1)
           newChildren.splice(toIndex, 0, removed)
@@ -1006,9 +1101,14 @@ export function CMSProvider({ children }: { children: ReactNode }) {
 
   const generatePassword = (): string => {
     const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789!@#$%'
+    const length = 16
+    // Math.random() is not a CSPRNG, so generated admin passwords were
+    // predictable. Rejection-sample to avoid the modulo bias.
+    const out = new Uint32Array(length)
+    crypto.getRandomValues(out)
     let password = ''
-    for (let i = 0; i < 12; i++) {
-      password += chars.charAt(Math.floor(Math.random() * chars.length))
+    for (let i = 0; i < length; i++) {
+      password += chars[out[i] % chars.length]
     }
     return password
   }
@@ -1021,7 +1121,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ email, password, action: 'create' })
       })
 
@@ -1049,7 +1149,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ action: 'update', userId, newEmail: email })
       })
 
@@ -1074,7 +1174,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ action: 'updatePassword', userId, newPassword })
       })
 
@@ -1098,7 +1198,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/users', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify({ action: 'delete', userId })
       })
 
@@ -1121,7 +1221,7 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     try {
       const response = await fetch('/api/users', {
         method: 'GET',
-        headers: { 'Content-Type': 'application/json' }
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) }
       })
 
       const data = await response.json()
@@ -1139,15 +1239,19 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       return { success: false, error: 'Supabase ikke konfigureret' }
     }
 
-    const { error } = await supabase.auth.resetPasswordForEmail(email, {
-      redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/admin/reset-password`,
-    })
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${typeof window !== 'undefined' ? window.location.origin : ''}/admin/reset-password`,
+      })
 
-    if (error) {
-      return { success: false, error: error.message }
+      if (error) {
+        return { success: false, error: error.message }
+      }
+
+      return { success: true }
+    } catch (err: any) {
+      return { success: false, error: err?.message || 'Der opstod en fejl' }
     }
-
-    return { success: true }
   }
 
   return (

@@ -51,6 +51,7 @@ export default function Navigation() {
   const [scrolled, setScrolled] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null)
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState<string | null>(null)
+<<<<<<< Updated upstream
   const dropdownRef = useRef<HTMLDivElement>(null)
   const [isReady, setIsReady] = useState(false)
 
@@ -59,6 +60,11 @@ export default function Navigation() {
       setTimeout(() => setIsReady(true), 100)
     }
   }, [mounted, supabaseReady])
+=======
+  // One ref per dropdown. A single shared ref was overwritten on every render,
+  // so outside-click detection only ever worked for the last item in the list.
+  const dropdownRefs = useRef(new Map<string, HTMLDivElement>())
+>>>>>>> Stashed changes
 
   useEffect(() => {
     const handleScroll = () => {
@@ -70,7 +76,11 @@ export default function Navigation() {
 
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node
+      const insideADropdown = Array.from(dropdownRefs.current.values()).some(
+        element => element.contains(target)
+      )
+      if (!insideADropdown) {
         setDropdownOpen(null)
       }
     }
@@ -78,19 +88,23 @@ export default function Navigation() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
-  const toggleMobile = () => {
-    setMobileOpen(!mobileOpen)
-    if (!mobileOpen) {
-      document.body.style.overflow = 'hidden'
-    } else {
+  // The scroll lock is a global side effect, so it has to be undone if this
+  // component unmounts while the menu is open (e.g. client-side nav to /admin).
+  useEffect(() => {
+    if (!mobileOpen) return
+    document.body.style.overflow = 'hidden'
+    return () => {
       document.body.style.overflow = ''
     }
+  }, [mobileOpen])
+
+  const toggleMobile = () => {
+    setMobileOpen(!mobileOpen)
     setMobileDropdownOpen(null)
   }
 
   const closeMobile = () => {
     setMobileOpen(false)
-    document.body.style.overflow = ''
     setMobileDropdownOpen(null)
   }
 
@@ -118,29 +132,45 @@ export default function Navigation() {
             <div className="hidden lg:flex items-center gap-6 xl:gap-8">
               {navigation.map((item) => (
                 item.children && item.children.length > 0 ? (
-                  <div key={item.id} className="relative group" ref={dropdownRef}>
+                  <div
+                    key={item.id}
+                    className="relative group"
+                    ref={el => {
+                      if (el) dropdownRefs.current.set(item.id, el)
+                      else dropdownRefs.current.delete(item.id)
+                    }}
+                  >
                     <button
                       onClick={() => setDropdownOpen(dropdownOpen === item.id ? null : item.id)}
                       onMouseEnter={() => setDropdownOpen(item.id)}
                       className={`nav-link text-sm font-medium flex items-center gap-1 transition-colors ${scrolled ? 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white' : 'text-white/80 hover:text-white'}`}
                     >
                       {getLabel(item)}
-                      <svg 
+                      <svg
                         className={`w-4 h-4 transition-transform duration-200 ${dropdownOpen === item.id ? 'rotate-180' : ''}`}
-                        fill="none" 
-                        viewBox="0 0 24 24" 
+                        fill="none"
+                        viewBox="0 0 24 24"
                         stroke="currentColor"
                       >
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
                       </svg>
                     </button>
-                    
+
                     {dropdownOpen === item.id && (
+<<<<<<< Updated upstream
                       <div 
                         className="absolute top-full left-1/2 -translate-x-1/2 mt-6 w-64"
                         style={{ 
                           animation: 'dropdownFadeIn 0.3s ease forwards',
                         }}
+=======
+                      <div
+                        // Visibility is driven by state, not only :hover, so
+                        // keyboard/touch activation actually shows the panel.
+                        // pt-4 bridges the gap so the pointer can travel from the
+                        // button onto the panel without :hover being lost.
+                        className={`absolute top-full left-1/2 -translate-x-1/2 pt-4 w-56 transition-opacity duration-200 ${dropdownOpen === item.id ? 'opacity-100 visible' : 'opacity-0 invisible'}`}
+>>>>>>> Stashed changes
                       >
                         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 dark:border-slate-700/30 overflow-hidden">
                           <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-l border-t border-white/20 dark:border-slate-700/30 rotate-45" />
@@ -218,9 +248,18 @@ export default function Navigation() {
         </div>
       </nav>
 
+<<<<<<< Updated upstream
       <div className={`fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-2xl lg:hidden transition-all duration-500 ease-out ${mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <div className="flex flex-col h-full pt-20 sm:pt-24" style={{ animation: mobileOpen ? 'mobileMenuIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards' : 'none' }}>
           <nav className="flex-1 px-6 overflow-hidden relative">
+=======
+      <div className={`fixed inset-0 z-40 bg-white dark:bg-slate-900 lg:hidden transition-all duration-500 ease-out ${mobileOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full pointer-events-none'}`}>
+        <div className="flex flex-col h-full pt-20 sm:pt-24">
+          {/* min-h-0 lets the flex child shrink, and overflow-y-auto makes the
+              list scrollable. It was overflow-hidden, so the lower links and the
+              CTA were unreachable on short viewports. */}
+          <nav className="flex-1 min-h-0 px-6 overflow-y-auto relative">
+>>>>>>> Stashed changes
             <div 
               className={`absolute inset-0 px-6 transition-all duration-300 ease-out ${
                 mobileDropdownOpen ? '-translate-x-full opacity-0' : 'translate-x-0 opacity-100'
@@ -229,7 +268,10 @@ export default function Navigation() {
               <div className="space-y-2">
                 {navigation.map((item) => (
                   <div key={item.id}>
-                    {item.type === 'dropdown' ? (
+                    {/* Same predicate as desktop: an item with no children is a
+                        link. Checking item.type alone rendered a dead button
+                        for a dropdown that had lost its children. */}
+                    {item.children && item.children.length > 0 ? (
                       <button
                         onClick={() => openDropdown(item.id)}
                         className="w-full flex items-center justify-between py-4 text-lg font-medium text-white border-b border-slate-800"
@@ -254,7 +296,7 @@ export default function Navigation() {
             </div>
 
             {navigation.map((item) => (
-              item.type === 'dropdown' && (
+              item.children && item.children.length > 0 && (
                 <div 
                   key={`dropdown-${item.id}`}
                   className={`absolute inset-0 px-6 bg-slate-950/50 backdrop-blur-2xl transition-all duration-300 ease-out ${

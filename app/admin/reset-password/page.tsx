@@ -2,9 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { Eye, EyeOff, Lock, Check } from 'lucide-react'
+import { Eye, EyeOff, TriangleAlert, Check, Dices, Loader2 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { useCMS } from '@/lib/cms'
+import { Button, Field, Input, Panel, ErrorNote } from '../ui'
+import { AuthShell } from '../auth-shell'
+
+type Step = 'loading' | 'new-password' | 'success' | 'error'
 
 export default function ResetPasswordPage() {
   const { generatePassword } = useCMS()
@@ -12,37 +16,41 @@ export default function ResetPasswordPage() {
   const searchParams = useSearchParams()
   const token = searchParams.get('token')
   const type = searchParams.get('type')
-  
-  const [loading, setLoading] = useState(true)
+
   const [newPassword, setNewPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState('')
-  const [success, setSuccess] = useState(false)
-  const [step, setStep] = useState<'loading' | 'new-password' | 'success' | 'error'>('loading')
+  const [step, setStep] = useState<Step>('loading')
 
   useEffect(() => {
-    const handlePasswordReset = async () => {
-      if (type === 'recovery' && token) {
-        const { data, error } = await supabase.auth.setSession({
-          access_token: token,
-          refresh_token: '',
-        })
-        
-        if (error || !data.session) {
+    let cancelled = false
+
+    const establishSession = async () => {
+      if (type !== 'recovery' || !token) {
+        if (!cancelled) {
+          setError('Ugyldigt link')
           setStep('error')
-          setError(error?.message || 'Ugyldigt eller udløbet link')
-        } else {
-          setStep('new-password')
         }
-      } else {
-        setStep('error')
-        setError('Ugyldigt link')
+        return
       }
-      setLoading(false)
+      const { data, error: sessionError } = await supabase.auth.setSession({
+        access_token: token,
+        refresh_token: '',
+      })
+      if (cancelled) return
+      if (sessionError || !data.session) {
+        setError('Ugyldigt eller udløbet link')
+        setStep('error')
+      } else {
+        setStep('new-password')
+      }
     }
 
-    handlePasswordReset()
+    establishSession()
+    return () => {
+      cancelled = true
+    }
   }, [token, type])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -53,162 +61,166 @@ export default function ResetPasswordPage() {
       setError('Adgangskoden skal være mindst 8 tegn')
       return
     }
-
     if (newPassword !== confirmPassword) {
       setError('Adgangskoderne matcher ikke')
       return
     }
 
-    const { error } = await supabase.auth.updateUser({
-      password: newPassword,
-    })
-
-    if (error) {
-      setError(error.message)
+    const { error: updateError } = await supabase.auth.updateUser({ password: newPassword })
+    if (updateError) {
+      setError(updateError.message)
       return
     }
-
-    setSuccess(true)
     setStep('success')
   }
 
   const handleGeneratePassword = () => {
-    const pwd = generatePassword()
-    setNewPassword(pwd)
+    setNewPassword(generatePassword())
+    // Confirmation is cleared because it can no longer match; leaving a stale
+    // value behind would submit a mismatched pair.
     setConfirmPassword('')
+    setShowPassword(true)
+    setError('')
   }
 
-  if (loading || step === 'loading') {
+  /* -------------------------------------------------------------- Loading -- */
+
+  if (step === 'loading') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 px-4">
-        <div className="text-slate-500">Loader...</div>
-      </div>
+      <AuthShell>
+        <div className="flex items-center justify-center gap-2 py-8 text-[13px] text-[var(--ink-3)]">
+          <Loader2 size={15} className="animate-spin" />
+          Indlæser…
+        </div>
+      </AuthShell>
     )
   }
+
+  /* ---------------------------------------------------------------- Error -- */
 
   if (step === 'error') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 px-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-red-500" />
+      <AuthShell>
+        <Panel>
+          <div className="flex items-start gap-3 border-b border-[var(--hairline)] px-5 py-4">
+            <TriangleAlert size={17} className="mt-0.5 shrink-0 text-[var(--danger)]" />
+            <div>
+              <h1 className="text-sm font-semibold text-[var(--ink)]">Linket virker ikke</h1>
+              <p className="mt-1 text-[13px] leading-snug text-[var(--ink-3)]">
+                {error || 'Linket er ugyldigt eller udløbet.'}
+              </p>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Ugyldigt link</h1>
-            <p className="text-slate-600 dark:text-slate-400 mb-6">
-              {error || 'Dette link er ugyldigt eller er udløbet. Bed om et nyt link til nulstilling af adgangskode.'}
-            </p>
-            <button
-              onClick={() => router.push('/admin/login')}
-              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-colors"
-            >
-              Gå til login
-            </button>
           </div>
-        </div>
-      </div>
+          <div className="px-5 py-5">
+            <p className="text-[13px] leading-relaxed text-[var(--ink-2)]">
+              Bed om et nyt link fra login-siden. Linket er kun gyldigt i en time.
+            </p>
+            <Button variant="primary" className="mt-4 w-full" onClick={() => router.push('/admin/login')}>
+              Gå til login
+            </Button>
+          </div>
+        </Panel>
+      </AuthShell>
     )
   }
+
+  /* -------------------------------------------------------------- Success -- */
 
   if (step === 'success') {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 px-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-16 h-16 bg-green-100 dark:bg-green-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-green-500" />
+      <AuthShell>
+        <Panel>
+          <div className="flex items-start gap-3 border-b border-[var(--hairline)] px-5 py-4">
+            <Check size={17} className="mt-0.5 shrink-0 text-[var(--success)]" />
+            <div>
+              <h1 className="text-sm font-semibold text-[var(--ink)]">Adgangskoden er ændret</h1>
+              <p className="mt-1 text-[13px] leading-snug text-[var(--ink-3)]">
+                Du kan logge ind med din nye adgangskode.
+              </p>
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Adgangskode nulstillet!</h1>
-            <p className="text-slate-600 dark:text-slate-400 mb-6">
-              Din adgangskode er nu ændret. Du kan nu logge ind med din nye adgangskode.
-            </p>
-            <button
-              onClick={() => router.push('/admin/login')}
-              className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-colors"
-            >
-              Gå til login
-            </button>
           </div>
-        </div>
-      </div>
+          <div className="px-5 py-5">
+            <Button variant="primary" className="w-full" onClick={() => router.push('/admin/login')}>
+              Gå til login
+            </Button>
+          </div>
+        </Panel>
+      </AuthShell>
     )
   }
 
+  /* -------------------------------------------------------- New password -- */
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 px-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Ny adgangskode</h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-2">
-              Indtast din nye adgangskode
-            </p>
-          </div>
+    <AuthShell>
+      <Panel>
+        <div className="border-b border-[var(--hairline)] px-5 py-5">
+          <p className="admin-eyebrow mb-2">Adgangskode</p>
+          <h1 className="text-[15px] font-semibold leading-tight text-[var(--ink)]">Vælg en ny adgangskode</h1>
+          <p className="mt-1 text-[13px] leading-snug text-[var(--ink-3)]">
+            Mindst 8 tegn. Brug den også næste gang du logger ind.
+          </p>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Ny adgangskode
-              </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-12"
-                  placeholder="Min. 8 tegn"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Bekræft adgangskode
-              </label>
-              <input
+        <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5">
+          <Field label="Ny adgangskode" htmlFor="new-password">
+            <div className="relative">
+              <Input
+                id="new-password"
+                name="new-password"
                 type={showPassword ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="Gentag adgangskode"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={e => setNewPassword(e.target.value)}
+                placeholder="Mindst 8 tegn"
+                className="pr-10"
                 required
               />
+              <button
+                type="button"
+                onClick={() => setShowPassword(v => !v)}
+                aria-label={showPassword ? 'Skjul adgangskode' : 'Vis adgangskode'}
+                aria-pressed={showPassword}
+                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[var(--ink-3)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
             </div>
+          </Field>
 
-            <button
-              type="button"
-              onClick={handleGeneratePassword}
-              className="w-full py-2 text-sm text-purple-500 hover:text-purple-600"
-            >
-              Generer tilfældig adgangskode
-            </button>
+          <Field
+            label="Bekræft adgangskode"
+            htmlFor="confirm-password"
+            hint={confirmPassword && confirmPassword !== newPassword ? 'Matcher ikke' : undefined}
+          >
+            <Input
+              id="confirm-password"
+              name="confirm-password"
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="new-password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              placeholder="Gentag adgangskoden"
+              required
+            />
+          </Field>
 
-            {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl text-sm">
-                {error}
-              </div>
-            )}
+          <button
+            type="button"
+            onClick={handleGeneratePassword}
+            className="inline-flex items-center gap-1.5 rounded text-[13px] font-medium text-[var(--accent)] transition-opacity hover:opacity-75"
+          >
+            <Dices size={14} />
+           Generer en tilfældig adgangskode
+          </button>
 
-            <button
-              type="submit"
-              className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-colors"
-            >
-              Gem ny adgangskode
-            </button>
-          </form>
-        </div>
-      </div>
-    </div>
+          <div aria-live="polite">{error && <ErrorNote>{error}</ErrorNote>}</div>
+
+          <Button type="submit" variant="primary" className="w-full">
+            Gem ny adgangskode
+          </Button>
+        </form>
+      </Panel>
+    </AuthShell>
   )
 }

@@ -123,8 +123,8 @@ function StatsBlock({ content = {} }: { content?: Record<string, any> }) {
     <section className="py-16 sm:py-24">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-          {stats.map((stat: any) => (
-            <div key={stat.id} className="text-center">
+          {stats.map((stat: any, index: number) => (
+            <div key={stat.id ?? `stat-${index}`} className="text-center">
               <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-blue-500 mb-2">
                 {stat.number}
               </div>
@@ -146,9 +146,9 @@ function GalleryBlock({ content = {} }: { content?: Record<string, any> }) {
     <section className="py-16 sm:py-24">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {items.map((item: any) => (
+          {items.map((item: any, index: number) => (
             <div
-              key={item.id}
+              key={item.id ?? `gallery-${index}`}
               className="aspect-[4/3] bg-slate-100 dark:bg-slate-800 rounded-xl flex items-center justify-center"
             >
               <span className="text-slate-400">{item.title}</span>

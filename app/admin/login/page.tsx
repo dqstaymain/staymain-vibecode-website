@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Eye, EyeOff, Lock, ArrowLeft, Mail } from 'lucide-react'
+import { Eye, EyeOff, ArrowLeft, Mail, TriangleAlert, Check } from 'lucide-react'
 import { useCMS } from '@/lib/cms'
+import { Button, Field, Input, Panel, ErrorNote } from '../ui'
+import { AuthShell } from '../auth-shell'
 
 export default function LoginPage() {
   const { login, isAuthenticated, requestPasswordReset, supabaseReady } = useCMS()
@@ -33,8 +35,8 @@ export default function LoginPage() {
       router.push('/admin')
     } else {
       setError(result.error || 'Der opstod en fejl')
+      setLoading(false)
     }
-    setLoading(false)
   }
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -43,189 +45,209 @@ export default function LoginPage() {
     setLoading(true)
 
     const result = await requestPasswordReset(resetEmail)
+    setLoading(false)
     if (result.success) {
       setResetSent(true)
     } else {
       setError(result.error || 'Der opstod en fejl')
     }
-    setLoading(false)
   }
+
+  const backToLogin = () => {
+    setShowForgotPassword(false)
+    setResetSent(false)
+    setResetEmail('')
+    setError('')
+  }
+
+  /* ---------------------------------------------------------------- Setup -- */
 
   if (!supabaseReady) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 px-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8 text-center">
-            <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-amber-500" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white mb-2">Supabase ikke konfigureret</h1>
-            <p className="text-slate-600 dark:text-slate-400 mb-6">
-              Databaseforbindelsen er ikke opsat endnu. Følg instruktionerne i README for at konfigurere Supabase.
-            </p>
-            <div className="bg-slate-50 dark:bg-slate-900 rounded-lg p-4 text-left">
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">1. Opret en gratis Supabase konto på supabase.com</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">2. Opret et nyt projekt</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400 mb-2">3. Kopier Project URL og anon key fra Settings → API</p>
-              <p className="text-sm text-slate-600 dark:text-slate-400">4. Opret en .env.local fil med credentialsne</p>
+      <AuthShell>
+        <Panel>
+          <div className="flex items-start gap-3 border-b border-[var(--hairline)] px-5 py-4">
+            <TriangleAlert size={17} className="mt-0.5 shrink-0 text-[var(--danger)]" />
+            <div>
+              <h1 className="text-sm font-semibold text-[var(--ink)]">Database ikke forbundet</h1>
+              <p className="mt-1 text-[13px] leading-snug text-[var(--ink-3)]">
+                CMS&apos;t kan ikke nå Supabase. Sæt credentialsne op for at fortsætte.
+              </p>
             </div>
           </div>
-        </div>
-      </div>
+          <ol className="space-y-2.5 px-5 py-5">
+            {[
+              'Opret en gratis konto på supabase.com',
+              'Opret et nyt projekt',
+              'Kopiér Project URL og anon key fra Settings → API',
+              'Opret en .env.local med credentialsne',
+            ].map((step, i) => (
+              <li key={step} className="flex gap-3 text-[13px] leading-snug text-[var(--ink-2)]">
+                {/* The numbers are the point here: these steps are ordered. */}
+                <span className="admin-num w-4 shrink-0 text-[var(--ink-3)]">
+                  {String(i + 1).padStart(2, '0')}
+                </span>
+                {step}
+              </li>
+            ))}
+          </ol>
+        </Panel>
+      </AuthShell>
     )
   }
+
+  /* --------------------------------------------------------- Reset flow -- */
 
   if (showForgotPassword) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 px-4">
-        <div className="w-full max-w-md">
-          <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8">
+      <AuthShell>
+        <Panel>
+          <div className="border-b border-[var(--hairline)] px-5 py-4">
             <button
-              onClick={() => { setShowForgotPassword(false); setResetSent(false); setResetEmail(''); setError('') }}
-              className="flex items-center gap-2 text-slate-500 hover:text-slate-700 mb-6"
+              onClick={backToLogin}
+              className="-ml-1 mb-3 inline-flex items-center gap-1.5 rounded px-1 py-0.5 text-[13px] font-medium text-[var(--ink-3)] transition-colors hover:text-[var(--ink)]"
             >
-              <ArrowLeft size={18} />
+              <ArrowLeft size={14} />
               Tilbage til login
             </button>
+            <p className="admin-eyebrow mb-1.5">Adgangskode</p>
+            <h1 className="text-sm font-semibold text-[var(--ink)]">Nulstil din adgangskode</h1>
+            <p className="mt-1 text-[13px] leading-snug text-[var(--ink-3)]">
+              {resetSent
+                ? 'Tjek din mail for linket.'
+                : 'Vi sender dig et link, du kan bruge til at vælge en ny adgangskode.'}
+            </p>
+          </div>
 
-            <div className="text-center mb-8">
-              <div className="w-16 h-16 bg-purple-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                <Mail className="w-8 h-8 text-white" />
-              </div>
-              <h1 className="text-2xl font-bold text-slate-900 dark:text-white">Nulstil adgangskode</h1>
-              <p className="text-slate-600 dark:text-slate-400 mt-2">
-                {resetSent 
-                  ? 'Tjek din mail for at nulstille adgangskoden'
-                  : 'Indtast din email og vi sender dig et link til at nulstille din adgangskode'}
-              </p>
-            </div>
-
+          <div className="px-5 py-5">
             {resetSent ? (
-              <div className="text-center">
-                <p className="text-slate-600 dark:text-slate-400 mb-6">
-                  Vi har sendt et link til <strong>{resetEmail}</strong>. 
-                  Linket er gyldigt i 1 time.
-                </p>
-                <button
-                  onClick={() => { setShowForgotPassword(false); setResetSent(false); setResetEmail('') }}
-                  className="px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-colors"
-                >
+              <div className="space-y-4">
+                <div className="flex items-start gap-2.5 rounded-md border border-[var(--hairline)] bg-[var(--surface-sunken)] px-3 py-2.5">
+                  <Check size={15} className="mt-0.5 shrink-0 text-[var(--success)]" />
+                  <p className="text-[13px] leading-snug text-[var(--ink-2)]">
+                    Vi har sendt et link til <span className="font-medium">{resetEmail}</span>. Det
+                    er gyldigt i en time.
+                  </p>
+                </div>
+                <Button variant="primary" className="w-full" onClick={backToLogin}>
                   Tilbage til login
-                </button>
+                </Button>
               </div>
             ) : (
-              <form onSubmit={handleForgotPassword} className="space-y-6">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                    Email
-                  </label>
-                  <input
+              <form onSubmit={handleForgotPassword} className="space-y-4">
+                <Field label="Email" htmlFor="reset-email">
+                  <Input
+                    id="reset-email"
                     type="email"
+                    autoComplete="email"
                     value={resetEmail}
-                    onChange={(e) => setResetEmail(e.target.value)}
-                    className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                    onChange={e => setResetEmail(e.target.value)}
                     placeholder="din@email.dk"
                     required
                   />
-                </div>
+                </Field>
 
-                {error && (
-                  <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl text-sm">
-                    {error}
-                  </div>
-                )}
+                {error && <ErrorNote>{error}</ErrorNote>}
 
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="w-full py-3 bg-purple-500 hover:bg-purple-600 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
-                >
-                  {loading ? 'Sender...' : 'Send nulstillingslink'}
-                </button>
+                <Button type="submit" variant="primary" disabled={loading} className="w-full">
+                  <Mail size={15} />
+                  {loading ? 'Sender…' : 'Send nulstillingslink'}
+                </Button>
               </form>
             )}
           </div>
-        </div>
-      </div>
+        </Panel>
+      </AuthShell>
     )
   }
 
+  /* --------------------------------------------------------------- Login -- */
+
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 px-4">
-      <div className="w-full max-w-md">
-        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-xl p-8">
-          <div className="text-center mb-8">
-            <div className="w-16 h-16 bg-blue-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Lock className="w-8 h-8 text-white" />
-            </div>
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-white">StayMain CMS</h1>
-            <p className="text-slate-600 dark:text-slate-400 mt-2">Log ind for at redigere indhold</p>
-          </div>
+    <AuthShell>
+      <Panel>
+        <div className="border-b border-[var(--hairline)] px-5 py-5">
+          <p className="admin-eyebrow mb-2">StayMain CMS</p>
+          <h1 className="text-[15px] font-semibold leading-tight text-[var(--ink)]">Log ind</h1>
+          <p className="mt-1 text-[13px] leading-snug text-[var(--ink-3)]">
+            Indholdet på dit site redigeres her.
+          </p>
+        </div>
 
-          <form onSubmit={handleSubmit} className="space-y-6">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                placeholder="admin@staymain.dk"
-                required
-              />
-            </div>
+        <form onSubmit={handleSubmit} className="space-y-4 px-5 py-5" aria-busy={loading}>
+          <Field label="Email" htmlFor="login-email">
+            <Input
+              id="login-email"
+              type="email"
+              name="email"
+              autoComplete="email"
+              autoFocus
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+              placeholder="admin@staymain.dk"
+              required
+            />
+          </Field>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">
+          <div className="space-y-1.5">
+            {/* The recovery link sits with the field it belongs to, which is
+                where people look for it. */}
+            <div className="flex items-baseline justify-between gap-3">
+              <label
+                htmlFor="login-password"
+                className="block text-[13px] font-medium leading-none text-[var(--ink-2)]"
+              >
                 Adgangskode
               </label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:border-transparent pr-12"
-                  placeholder="••••••••"
-                  required
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                >
-                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
-                </button>
-              </div>
-            </div>
-
-            {error && (
-              <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 rounded-xl text-sm">
-                {error}
-              </div>
-            )}
-
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-xl transition-colors disabled:opacity-50"
-            >
-              {loading ? 'Logger ind...' : 'Log ind'}
-            </button>
-
-            <div className="text-center">
               <button
                 type="button"
                 onClick={() => setShowForgotPassword(true)}
-                className="text-sm text-blue-500 hover:text-blue-600"
+                className="rounded text-[13px] font-medium text-[var(--accent)] transition-opacity hover:opacity-75"
               >
                 Glemt adgangskode?
               </button>
             </div>
-          </form>
-        </div>
-      </div>
-    </div>
+            <div className="relative">
+              <Input
+                id="login-password"
+                name="password"
+                type={showPassword ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                placeholder="••••••••"
+                className="pr-10"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(v => !v)}
+                aria-label={showPassword ? 'Skjul adgangskode' : 'Vis adgangskode'}
+                aria-pressed={showPassword}
+                className="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-[var(--ink-3)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          {/* Errors are announced, not just shown. */}
+          <div aria-live="polite">{error && <ErrorNote>{error}</ErrorNote>}</div>
+
+          <Button type="submit" variant="primary" disabled={loading} className="w-full">
+            {loading ? 'Logger ind…' : 'Log ind'}
+          </Button>
+        </form>
+      </Panel>
+
+      <p className="mt-5 text-center text-[13px] text-[var(--ink-3)]">
+        <a
+          href="/"
+          className="rounded font-medium transition-colors hover:text-[var(--ink-2)]"
+        >
+          Tilbage til sitet
+        </a>
+      </p>
+    </AuthShell>
   )
 }

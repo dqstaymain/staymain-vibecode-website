@@ -1,0 +1,161 @@
+/* ==========================================================================
+   StayMain CMS — admin design tokens
+   --------------------------------------------------------------------------
+   Loaded only by app/admin/layout.tsx. Deliberately not wrapped in @layer:
+   @layer is only valid in the file that declares the @tailwind directives
+   (globals.css), and this file is scoped to the admin.
+
+   globals.css force-applies Libre Baskerville to every h1/h2 with !important
+   for the public site, so the heading reset below has to match that weight to
+   win. That is a contained, intentional override rather than a new specificity
+   arms race.
+   ========================================================================== */
+
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&display=swap');
+
+.admin-shell {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif;
+
+  /* Light */
+  --canvas: #f7f7f8;
+  --surface: #ffffff;
+  --surface-sunken: #fafafa;
+  --surface-hover: #f4f4f5;
+  --ink: #18181b;
+  --ink-2: #52525b;
+  --ink-3: #a1a1aa;
+  --hairline: #e4e4e7;
+  --hairline-strong: #d4d4d8;
+  --accent: #4338ca;
+  --accent-hover: #3730a3;
+  --accent-soft: #eef2ff;
+  --accent-line: #c7d2fe;
+  --danger: #b91c1c;
+  --danger-soft: #fef2f2;
+  --success: #15803d;
+  --success-soft: #f0fdf4;
+}
+
+.dark .admin-shell {
+  --canvas: #0c0c0e;
+  --surface: #131316;
+  --surface-sunken: #18181b;
+  --surface-hover: #1f1f23;
+  --ink: #fafafa;
+  --ink-2: #a1a1aa;
+  --ink-3: #71717a;
+  --hairline: #27272a;
+  --hairline-strong: #3f3f46;
+  --accent: #818cf8;
+  --accent-hover: #a5b4fc;
+  --accent-soft: #1e1b4b;
+  --accent-line: #312e81;
+  --danger: #f87171;
+  --danger-soft: #2a1215;
+  --success: #4ade80;
+  --success-soft: #0f2419;
+}
+
+/* Reset the public site's serif heading rule inside the admin. */
+.admin-shell h1,
+.admin-shell h2,
+.admin-shell h3,
+.admin-shell h4 {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif !important;
+  font-weight: 600;
+  letter-spacing: -0.011em;
+}
+
+/* Structural label: the mono voice used for section eyebrows, block type
+   codes and positional numbers. */
+.admin-eyebrow {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 500;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+.admin-num {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum';
+}
+
+/* Visible keyboard focus everywhere. */
+.admin-shell :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
+.admin-shell input:focus-visible,
+.admin-shell select:focus-visible,
+.admin-shell textarea:focus-visible {
+  outline: none;
+}
+
+/* Inputs carry their own focus treatment so the ring sits on the border. */
+.admin-input {
+  width: 100%;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--hairline-strong);
+  border-radius: 6px;
+  padding: 0.5rem 0.6875rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-family: inherit;
+  transition: border-color 0.12s ease, box-shadow 0.12s ease;
+}
+
+.admin-input::placeholder {
+  color: var(--ink-3);
+}
+
+.admin-input:hover:not(:disabled) {
+  border-color: var(--ink-3);
+}
+
+.admin-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(67, 56, 202, 0.14);
+}
+
+.dark .admin-input:focus {
+  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.2);
+}
+
+.admin-input:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* The block-stack spine: a continuous margin rule the rows hang off. */
+.admin-spine {
+  position: relative;
+}
+
+.admin-spine::before {
+  content: '';
+  position: absolute;
+  left: 13px;
+  top: 10px;
+  bottom: 10px;
+  width: 1px;
+  background: var(--hairline);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .admin-shell *,
+  .admin-shell *::before,
+  .admin-shell *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

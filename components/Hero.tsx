@@ -25,6 +25,14 @@ interface HeroProps {
   alignment?: 'left' | 'center'
 }
 
+function videoMimeType(src: string): string {
+  const ext = src.split('?')[0].split('.').pop()?.toLowerCase() || ''
+  if (ext === 'webm') return 'video/webm'
+  if (ext === 'ogv' || ext === 'ogg') return 'video/ogg'
+  if (ext === 'mov') return 'video/quicktime'
+  return 'video/mp4'
+}
+
 function RichText({ content, alignment = 'center' }: { content: ReactNode; alignment?: 'left' | 'center' }) {
   if (typeof content === 'string') {
     return (
@@ -215,12 +223,12 @@ export default function Hero({
   return (
     <section className={`relative min-h-screen flex items-center justify-center ${getBackgroundClass()} overflow-hidden`}>
       {heroBackgroundType === 'image' && heroBackgroundImage && (
-        <div 
+        <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{ backgroundImage: `url(${heroBackgroundImage})` }}
+          style={{ backgroundImage: `url("${heroBackgroundImage.replace(/"/g, '\\"')}")` }}
         />
       )}
-      
+
       {heroBackgroundType === 'video' && heroBackgroundVideo && (
         <video
           key={heroBackgroundVideo}
@@ -230,7 +238,9 @@ export default function Hero({
           loop
           playsInline
         >
-          <source src={heroBackgroundVideo} type="video/mp4" />
+          {/* The media library also accepts webm/ogv; hardcoding mp4 made the
+              browser refuse to play those files. */}
+          <source src={heroBackgroundVideo} type={videoMimeType(heroBackgroundVideo)} />
         </video>
       )}
 
