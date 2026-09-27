@@ -32,13 +32,8 @@ export default function Footer() {
                 </a>
               </li>
               <li className="flex items-center gap-2 text-white/60 text-sm">
-<<<<<<< Updated upstream
                 <Phone size={14} />
-                <a href={`tel:${contactInfo.phone.replace(/\s/g, '')}`} className="hover:text-[#2563EB] transition-colors">
-=======
-                <Phone size={16} />
                 <a href={`tel:${(contactInfo.phone || '').replace(/\s/g, '')}`} className="hover:text-[#2563EB] transition-colors">
->>>>>>> Stashed changes
                   {contactInfo.phone}
                 </a>
               </li>

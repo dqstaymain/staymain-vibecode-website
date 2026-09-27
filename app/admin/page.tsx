@@ -47,7 +47,8 @@ import {
   Upload,
   Headphones,
   AlertTriangle,
-  TriangleAlert
+  TriangleAlert,
+  PanelTop
 } from 'lucide-react'
 import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo } from '@/lib/cms'
 import { uploadImage, authHeaders } from '@/lib/supabase'
@@ -75,7 +76,6 @@ function generateId(prefix: string = 'id'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
 }
 
-<<<<<<< Updated upstream
 type FooterLink = {
   id: string
   label: string
@@ -83,9 +83,97 @@ type FooterLink = {
 }
 
 
-=======
-function RailGroup({ label, children }: { label: string; children: React.ReactNode }) {
+/**
+ * Logo / favicon picker. Both were near-identical duplicated blocks, and the
+ * old markup stacked icon + label inside a `gap-2` flex row while also keeping
+ * the old `mr-2` margin, so the icons were double-spaced.
+ */
+function AssetField({
+  id,
+  label,
+  hint,
+  value,
+  previewClass,
+  uploading,
+  onOpenLibrary,
+  onUpload,
+  onClear,
+}: {
+  id: string
+  label: string
+  hint?: string
+  value?: string
+  previewClass: string
+  uploading: boolean
+  onOpenLibrary: () => void
+  onUpload: (file: File) => Promise<void>
+  onClear: () => void
+}) {
   return (
+    <Panel className="flex flex-col p-4">
+      <label htmlFor={id} className="text-[13px] font-medium leading-none text-[var(--ink-2)]">
+        {label}
+      </label>
+
+      <div className="mt-3 flex min-h-[80px] items-center justify-center rounded-md border border-[var(--hairline)] bg-[var(--surface-sunken)] p-2">
+        {value ? (
+          <img src={value} alt={label} className={`${previewClass} object-contain`} />
+        ) : (
+          <span className="text-[13px] text-[var(--ink-3)]">Ingen valgt</span>
+        )}
+      </div>
+
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Button type="button" variant="secondary" size="sm" onClick={onOpenLibrary}>
+          <Folder size={15} />
+          Bibliotek
+        </Button>
+        <label
+          htmlFor={id}
+          className="inline-flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md border border-dashed border-[var(--hairline-strong)] px-2.5 text-xs font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]"
+        >
+          <input
+            id={id}
+            type="file"
+            accept="image/*"
+            className="sr-only"
+            onChange={async e => {
+              const file = e.target.files?.[0]
+              if (file) await onUpload(file)
+              // Reset so re-picking the same file fires change again.
+              e.target.value = ''
+            }}
+          />
+          {uploading ? (
+            <>
+              <Loader2 size={14} className="animate-spin" />
+              Uploadér
+            </>
+          ) : (
+            <>
+              <Upload size={14} />
+              Upload
+            </>
+          )}
+        </label>
+      </div>
+
+      {value && (
+        <button
+          type="button"
+          onClick={onClear}
+          className="mt-2 self-start text-[13px] font-medium text-[var(--danger)] transition-opacity hover:opacity-75"
+        >
+          Fjern {label.toLowerCase()}
+        </button>
+      )}
+
+      {hint && <p className="mt-2 text-xs leading-snug text-[var(--ink-3)]">{hint}</p>}
+    </Panel>
+  )
+}
+
+function RailGroup({ label, children }: { label: string; children: React.ReactNode }) {  return (
     <div>
       <p className="admin-eyebrow px-2 pb-1.5">{label}</p>
       <div className="space-y-px">{children}</div>
@@ -159,7 +247,6 @@ function SaveButton({
     </div>
   )
 }
->>>>>>> Stashed changes
 
 const blockTypes = [
   { type: 'hero', label: 'Hero', icon: Layout, description: 'Stor header med titel og CTA' },
@@ -190,7 +277,7 @@ function Dashboard() {
   const [panelSelectedType, setPanelSelectedType] = useState<CMSBlock['type'] | null>(null)
   const [showComponentPicker, setShowComponentPicker] = useState(false)
   const [editingBlock, setEditingBlock] = useState<string | null>(null)
-  const blockEditRef = useRef<((fieldKey: string, url: string) => void) | null>(null)
+  const blockEditRef = useRef<((fieldKey: string | null, url?: string) => void) | null>(null)
   const [editingMeta, setEditingMeta] = useState(false)
   const [editingNavigation, setEditingNavigation] = useState(false)
   const [editingNavItem, setEditingNavItem] = useState<string | null>(null)
@@ -426,11 +513,12 @@ function Dashboard() {
    * could drift out of sync. One function keeps them mutually exclusive.
    */
   const goTo = (
-    view: 'page' | 'navigation' | 'contact' | 'cases' | 'testimonials' | 'logos' | 'media',
+    view: 'page' | 'navigation' | 'contact' | 'headerfooter' | 'cases' | 'testimonials' | 'logos' | 'media',
     slug?: string
   ) => {
     setEditingNavigation(view === 'navigation')
     setEditingContactInfo(view === 'contact')
+    setEditingHeaderFooter(view === 'headerfooter')
     setEditingCases(view === 'cases')
     setEditingTestimonials(view === 'testimonials')
     setEditingCompanyLogos(view === 'logos')
@@ -438,8 +526,20 @@ function Dashboard() {
     setEditingNavItem(null)
     setEditingBlock(null)
     setSelectedPage(view === 'page' ? slug ?? null : null)
-    if (view === 'contact') {
-      setContactForm({ ...contactInfo, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '' })
+    if (view === 'contact' || view === 'headerfooter') {
+      setContactForm({
+        ...contactInfo,
+        logo: contactInfo.logo || '',
+        favicon: contactInfo.favicon || '',
+        headerButtonText: contactInfo.headerButtonText || '',
+        footerDescription: contactInfo.footerDescription || '',
+        footerCol2Title: contactInfo.footerCol2Title || '',
+        footerCol3Title: contactInfo.footerCol3Title || '',
+        footerCol4Title: contactInfo.footerCol4Title || '',
+        footerCol2Links: contactInfo.footerCol2Links || [],
+        footerCol3Links: contactInfo.footerCol3Links || [],
+        footerCol4Links: contactInfo.footerCol4Links || [],
+      })
     }
   }
 
@@ -447,6 +547,7 @@ function Dashboard() {
   const activeView =
     editingNavigation ? 'navigation'
     : editingContactInfo ? 'contact'
+    : editingHeaderFooter ? 'headerfooter'
     : editingCases ? 'cases'
     : editingTestimonials ? 'testimonials'
     : editingCompanyLogos ? 'logos'
@@ -515,208 +616,6 @@ function Dashboard() {
         </div>
       </header>
 
-<<<<<<< Updated upstream
-      <div className="flex h-[calc(100vh-73px)]">
-        <aside className="w-64 bg-white dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 overflow-y-auto flex flex-col">
-          <div className="p-4">
-            <div className="flex items-center justify-between mb-3">
-              <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                Sider
-              </h2>
-              <button
-                onClick={() => setPagesCollapsed(!pagesCollapsed)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors p-1"
-              >
-                <ChevronDown size={16} className={`transition-transform ${pagesCollapsed ? '-rotate-90' : ''}`} />
-              </button>
-            </div>
-            {!pagesCollapsed && (
-            <nav className="space-y-1">
-              {(() => {
-                const rootPages = pages.filter(p => !p.parentSlug).sort((a, b) => {
-                  if (a.slug === 'home') return -1
-                  if (b.slug === 'home') return 1
-                  if (a.slug === 'ydelser') return -1
-                  if (b.slug === 'ydelser') return 1
-                  return a.slug.localeCompare(b.slug)
-                })
-                
-                const getChildren = (parentSlug: string) => {
-                  return pages
-                    .filter(p => p.parentSlug === parentSlug)
-                    .sort((a, b) => a.slug.localeCompare(b.slug))
-                }
-                
-                const renderPage = (page: typeof pages[0], depth: number = 0) => {
-                  const indentClass = depth === 0 ? '' : depth === 1 ? 'pl-6' : 'pl-8'
-                  const parentExists = page.parentSlug ? pages.some(p => p.slug === page.parentSlug) : true
-                  const children = getChildren(page.slug)
-                  
-                  return (
-                    <div key={page.slug}>
-                      <div
-                        onClick={() => { setSelectedPage(page.slug); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setEditingHeaderFooter(false) }}
-                        className={`w-full flex items-center justify-between px-3 py-2 rounded-lg text-left transition-colors group cursor-pointer ${indentClass} ${
-                          selectedPage === page.slug && !editingNavigation
-                            ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                            : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          {depth > 0 && <span className="text-slate-400 flex-shrink-0 text-xs">↳</span>}
-                          <span className="text-sm font-medium truncate">{page.title}</span>
-                          {!parentExists && page.parentSlug && (
-                            <span className="text-xs text-amber-500 flex-shrink-0">⚠️</span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-1 flex-shrink-0">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setEditingPageDetails({ slug: page.slug, title: page.title, pageSlug: page.slug.split('/').pop() || '', parentSlug: page.parentSlug || '' }) }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-blue-500 transition-opacity"
-                          >
-                            <Pencil size={14} />
-                          </button>
-                          {page.slug !== 'home' && (
-                            <button
-                              onClick={(e) => { e.stopPropagation(); setDeleteConfirm(page.slug) }}
-                              className="opacity-0 group-hover:opacity-100 p-1 text-slate-400 hover:text-red-500 transition-opacity"
-                            >
-                              <FileX size={14} />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-                      {children.map(child => renderPage(child, depth + 1))}
-                    </div>
-                  )
-                }
-                
-                return rootPages.map(page => renderPage(page))
-              })()}
-              <button
-                onClick={() => setShowCreatePage(true)}
-                className="w-full flex items-center gap-2 px-3 py-2.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 rounded-lg transition-colors mt-2"
-              >
-                <Plus size={18} />
-                <span className="text-sm font-medium">Opret ny side</span>
-              </button>
-            </nav>
-            )}
-            
-            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-              <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
-                Indhold
-              </h2>
-              <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(true); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setEditingHeaderFooter(false); setContactForm({ companyName: contactInfo.companyName, email: contactInfo.email, phone: contactInfo.phone, address: contactInfo.address, cvr: contactInfo.cvr, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '', headerButtonText: contactInfo.headerButtonText, footerDescription: contactInfo.footerDescription, footerCol2Title: contactInfo.footerCol2Title, footerCol3Title: contactInfo.footerCol3Title, footerCol4Title: contactInfo.footerCol4Title, footerCol2Links: contactInfo.footerCol2Links, footerCol3Links: contactInfo.footerCol3Links, footerCol4Links: contactInfo.footerCol4Links }) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  editingContactInfo
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Settings size={18} />
-                <span className="text-sm font-medium">Generelle oplysninger</span>
-              </button>
-              <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(true); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  editingCases
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Briefcase size={18} />
-                <span className="text-sm font-medium">Cases</span>
-              </button>
-              <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(true); setEditingCompanyLogos(false); setEditingMediaLibrary(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  editingTestimonials
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Quote size={18} />
-                <span className="text-sm font-medium">Kundeudtalelser</span>
-              </button>
-              <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(true); setEditingMediaLibrary(false); setEditingHeaderFooter(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  editingCompanyLogos
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Users size={18} />
-                <span className="text-sm font-medium">Firmalogoer</span>
-              </button>
-              <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(true) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  editingMediaLibrary
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Folder size={18} />
-                <span className="text-sm font-medium">Mediebibliotek</span>
-              </button>
-            </div>
-            
-            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-              <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
-                Navigation
-              </h2>
-              <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(true); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setEditingHeaderFooter(false) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  editingNavigation
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Menu size={18} />
-                <span className="text-sm font-medium">Rediger menu</span>
-              </button>
-              <button
-                onClick={() => { setSelectedPage(null); setEditingNavigation(false); setEditingContactInfo(false); setEditingCases(false); setEditingTestimonials(false); setEditingCompanyLogos(false); setEditingMediaLibrary(false); setEditingHeaderFooter(true); setContactForm({ ...contactInfo, logo: contactInfo.logo || '', favicon: contactInfo.favicon || '', headerButtonText: contactInfo.headerButtonText || '', footerDescription: contactInfo.footerDescription || '', footerCol2Title: contactInfo.footerCol2Title || '', footerCol3Title: contactInfo.footerCol3Title || '', footerCol4Title: contactInfo.footerCol4Title || '', footerCol2Links: contactInfo.footerCol2Links || [], footerCol3Links: contactInfo.footerCol3Links || [], footerCol4Links: contactInfo.footerCol4Links || [] }) }}
-                className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors ${
-                  editingHeaderFooter
-                    ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
-                    : 'text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700'
-                }`}
-              >
-                <Layout size={18} />
-                <span className="text-sm font-medium">Header / Footer</span>
-              </button>
-            </div>
-            
-            <div className="mt-6 pt-6 border-t border-slate-200 dark:border-slate-700">
-              <h2 className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-3">
-                Brugere
-              </h2>
-              <button
-                onClick={() => setShowCreateUser(true)}
-                className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-left text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
-              >
-                <Plus size={18} />
-                <span className="text-sm font-medium">Opret bruger</span>
-              </button>
-              <div className="mt-2 space-y-1">
-                {users.map(user => (
-                  <button
-                    key={user.id}
-                    onClick={() => setEditingUser(user.id)}
-                    className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-left text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors text-sm"
-                  >
-                    <div className="w-6 h-6 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center text-blue-500 text-xs font-medium">
-                      {user.email.charAt(0).toUpperCase()}
-                    </div>
-                    <span className="truncate">{user.email}</span>
-                  </button>
-                ))}
-=======
       <div className="flex h-[calc(100vh-3.5rem)]">
         <aside className="hidden w-[13rem] shrink-0 flex-col overflow-y-auto border-r border-[var(--hairline)] bg-[var(--surface)] lg:flex">
           <div className="flex-1 space-y-6 px-3 py-4">
@@ -734,7 +633,6 @@ function Dashboard() {
                     className={`transition-transform duration-150 ${pagesCollapsed ? '-rotate-90' : ''}`}
                   />
                 </IconButton>
->>>>>>> Stashed changes
               </div>
 
               {!pagesCollapsed && (
@@ -847,6 +745,12 @@ function Dashboard() {
                 label="Generelle oplysninger"
                 active={activeView === 'contact'}
                 onClick={() => goTo('contact')}
+              />
+              <RailItem
+                icon={<PanelTop size={15} />}
+                label="Header / Footer"
+                active={activeView === 'headerfooter'}
+                onClick={() => goTo('headerfooter')}
               />
               <RailItem
                 icon={<Briefcase size={15} />}
@@ -994,7 +898,7 @@ function Dashboard() {
                             <div className="flex items-center gap-3">
                               <GripVertical size={20} className="text-[var(--ink-3)] cursor-grab" />
                               <div>
-                                <div className="font-medium text-[var(--ink)] dark:text-white flex items-center gap-2">
+                                <div className="font-medium text-[var(--ink)] flex items-center gap-2">
                                   {item.label}
                                   {item.type === 'dropdown' && (
                                     <span className="text-xs bg-[var(--surface-hover)] px-2 py-0.5 rounded text-[var(--ink-2)]">
@@ -1002,7 +906,7 @@ function Dashboard() {
                                     </span>
                                   )}
                                 </div>
-                                <div className="text-sm text-[var(--ink-2)] text-[var(--ink-3)]">
+                                <div className="text-sm text-[var(--ink-2)]">
                                   {item.pageSlug ? `Side: ${item.pageSlug}` : item.href || 'Ingen link'}
                                 </div>
                               </div>
@@ -1010,7 +914,7 @@ function Dashboard() {
                             <div className="flex items-center gap-2">
                               <button
                                 onClick={() => setEditingNavItem(item.id)}
-                                className="p-2 text-[var(--ink-3)] hover:text-[var(--accent)] hover:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] rounded-lg transition-colors"
+                                className="p-2 text-[var(--ink-3)] hover:text-[var(--accent)] hover:bg-[var(--surface-hover)] rounded-lg transition-colors"
                                 title="Rediger"
                               >
                                 <Pencil size={18} />
@@ -1022,7 +926,7 @@ function Dashboard() {
                               )}
                               <button
                                 onClick={() => { setDeleteConfirm(item.id); setDeleteConfirmType('nav') }}
-                                className="p-2 text-[var(--ink-3)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] hover:bg-[var(--danger-soft)]/30 rounded-lg transition-colors"
+                                className="p-2 text-[var(--ink-3)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-lg transition-colors"
                                 title="Slet"
                               >
                                 <Trash2 size={18} />
@@ -1031,7 +935,7 @@ function Dashboard() {
                           </div>
                           
                           {item.children && item.children.length > 0 && (
-                            <div className="border-t border-[var(--hairline)] p-4 bg-[var(--surface-sunken)] bg-[var(--surface-sunken)]/50 mt-4"
+                            <div className="border-t border-[var(--hairline)] p-4 bg-[var(--surface-sunken)] mt-4"
                               onDragOver={(e) => {
                                 e.preventDefault()
                                 if (navDragIndex !== null) {
@@ -1102,7 +1006,7 @@ function Dashboard() {
                                       setChildDragIndex(null)
                                       setChildDragOverIndex(null)
                                     }}
-                                    className={`flex items-center justify-between text-sm text-[var(--ink-2)] text-[var(--ink-3)] bg-white bg-[var(--surface)] p-2 rounded-lg transition-all cursor-grab ${
+                                    className={`flex items-center justify-between text-sm text-[var(--ink-2)] bg-white bg-[var(--surface)] p-2 rounded-lg transition-all cursor-grab ${
                                       childDragParent === item.id && childDragIndex === childIndex ? 'opacity-50' : ''
                                     } ${
                                       childDragParent === item.id && childDragOverIndex === childIndex ? 'border-2 border-[var(--accent)]' : ''
@@ -1147,7 +1051,7 @@ function Dashboard() {
                   
                   <button
                     onClick={() => setShowAddNavItem(true)}
-                    className="w-full py-4 border-2 border-dashed border-[var(--hairline-strong)] border-[var(--hairline-strong)] rounded-lg text-[var(--ink-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors flex items-center justify-center gap-2"
+                    className="w-full py-4 border-2 border-dashed border-[var(--hairline-strong)] rounded-lg text-[var(--ink-2)] hover:border-[var(--accent)] hover:text-[var(--accent)] transition-colors flex items-center justify-center gap-2"
                   >
                     <Plus size={20} />
                     Tilføj navigationspunkt
@@ -1157,194 +1061,143 @@ function Dashboard() {
             </>
           )}
 
+
           {editingContactInfo && (
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="max-w-2xl mx-auto bg-white bg-[var(--surface)] rounded-lg border border-[var(--hairline)] p-6">
-                <h2 className="text-lg font-semibold text-[var(--ink)] dark:text-white mb-6">
-                  Rediger generelle oplysninger
-                </h2>
-                
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Virksomhedsnavn</label>
-                    <input
-                      type="text"
-                      value={contactForm.companyName}
-                      onChange={e => updateContactForm({ companyName: e.target.value })}
-                      className="admin-input"
-                    />
+            <SectionShell eyebrow="Indhold" title="Generelle oplysninger" width="max-w-2xl">
+              <div className="space-y-4">
+                <Panel className="p-5">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <Field label="Virksomhedsnavn" htmlFor="cf-company">
+                      <Input
+                        id="cf-company"
+                        value={contactForm.companyName}
+                        onChange={e => updateContactForm({ companyName: e.target.value })}
+                      />
+                    </Field>
+
+                    <Field label="E-mail" htmlFor="cf-email">
+                      <Input
+                        id="cf-email"
+                        type="email"
+                        value={contactForm.email}
+                        onChange={e => updateContactForm({ email: e.target.value })}
+                      />
+                    </Field>
+
+                    <Field label="Telefon" htmlFor="cf-phone">
+                      <Input
+                        id="cf-phone"
+                        type="tel"
+                        value={contactForm.phone}
+                        onChange={e => updateContactForm({ phone: e.target.value })}
+                      />
+                    </Field>
+
+                    <Field label="CVR-nummer" htmlFor="cf-cvr">
+                      <Input
+                        id="cf-cvr"
+                        value={contactForm.cvr}
+                        onChange={e => updateContactForm({ cvr: e.target.value })}
+                      />
+                    </Field>
+
+                    <Field label="Adresse" htmlFor="cf-address" className="sm:col-span-2">
+                      <Input
+                        id="cf-address"
+                        value={contactForm.address}
+                        onChange={e => updateContactForm({ address: e.target.value })}
+                      />
+                    </Field>
                   </div>
-                  
-                  <div>
-                    <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">E-mail</label>
-                    <input
-                      type="email"
-                      value={contactForm.email}
-                      onChange={e => updateContactForm({ email: e.target.value })}
-                      className="admin-input"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Telefon</label>
-                    <input
-                      type="tel"
-                      value={contactForm.phone}
-                      onChange={e => updateContactForm({ phone: e.target.value })}
-                      className="admin-input"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Adresse</label>
-                    <input
-                      type="text"
-                      value={contactForm.address}
-                      onChange={e => updateContactForm({ address: e.target.value })}
-                      className="admin-input"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">CVR-nummer</label>
-                    <input
-                      type="text"
-                      value={contactForm.cvr}
-                      onChange={e => updateContactForm({ cvr: e.target.value })}
-                      className="admin-input"
-                    />
-                  </div>
-                  
-                  <div>
-                    <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Logo</label>
-                    {contactForm.logo && <img src={contactForm.logo} alt="Logo" className="w-full h-24 object-contain mb-2 bg-white rounded-lg p-2" />}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleOpenLogoPicker}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-[var(--hairline-strong)] px-4 py-3 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]"
-                      >
-                        <Folder size={18} className="mr-2 text-[var(--ink-3)]" />
-                        <span className="text-[var(--ink-2)]">Mediebibliotek</span>
-                      </button>
-                      <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--hairline-strong)] px-4 py-3 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]">
-                        <input type="file" className="hidden" accept="image/*" onChange={async e => {
-                          const file = e.target.files?.[0]
-                          if (file) {
-                            setUploadingLogo(true)
-                            const url = await uploadToMediaLibrary(file)
-                            if (url) updateContactForm({ logo: url })
-                            setUploadingLogo(false)
-                          }
-                        }} />
-                        <Upload size={18} className="mr-2 text-[var(--ink-3)]" />
-                        <span className="text-[var(--ink-2)]">{uploadingLogo ? 'Uploader...' : 'Upload fra pc'}</span>
-                      </label>
-                    </div>
-                    {contactForm.logo && (
-                      <button
-                        type="button"
-                        onClick={() => updateContactForm({ logo: '' })}
-                        className="mt-2 text-sm text-[var(--danger)] hover:text-[var(--danger)]"
-                      >
-                        Fjern logo
-                      </button>
-                    )}
-                  </div>
-                  
-                  <div>
-                    <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Favicon</label>
-                    {contactForm.favicon && <img src={contactForm.favicon} alt="Favicon" className="w-12 h-12 object-contain mb-2 bg-white rounded-lg p-1" />}
-                    <div className="flex gap-2">
-                      <button
-                        type="button"
-                        onClick={handleOpenFaviconPicker}
-                        className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-[var(--hairline-strong)] px-4 py-3 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]"
-                      >
-                        <Folder size={18} className="mr-2 text-[var(--ink-3)]" />
-                        <span className="text-[var(--ink-2)]">Mediebibliotek</span>
-                      </button>
-                      <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--hairline-strong)] px-4 py-3 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]">
-                        <input type="file" className="hidden" accept="image/*" onChange={async e => {
-                          const file = e.target.files?.[0]
-                          if (file) {
-                            setUploadingFavicon(true)
-                            const url = await uploadToMediaLibrary(file)
-                            if (url) updateContactForm({ favicon: url })
-                            setUploadingFavicon(false)
-                          }
-                        }} />
-                        <Upload size={18} className="mr-2 text-[var(--ink-3)]" />
-                        <span className="text-[var(--ink-2)]">{uploadingFavicon ? 'Uploader...' : 'Upload fra pc'}</span>
-                      </label>
-                    </div>
-                    {contactForm.favicon && (
-                      <button
-                        type="button"
-                        onClick={() => updateContactForm({ favicon: '' })}
-                        className="mt-2 text-sm text-[var(--danger)] hover:text-[var(--danger)]"
-                      >
-                        Fjern favicon
-                      </button>
-                    )}
-                  </div>
+                </Panel>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <AssetField
+                    id="cf-logo"
+                    label="Logo"
+                    hint="Vises i footeren. Anbefalet: gennemsigtig PNG."
+                    value={contactForm.logo}
+                    previewClass="h-20"
+                    uploading={uploadingLogo}
+                    onOpenLibrary={handleOpenLogoPicker}
+                    onUpload={async file => {
+                      setUploadingLogo(true)
+                      const url = await uploadToMediaLibrary(file)
+                      if (url) updateContactForm({ logo: url })
+                      setUploadingLogo(false)
+                    }}
+                    onClear={() => updateContactForm({ logo: '' })}
+                  />
+
+                  <AssetField
+                    id="cf-favicon"
+                    label="Favicon"
+                    hint="Vises i browserens fanne. 32×32 px eller større."
+                    value={contactForm.favicon}
+                    previewClass="h-12 w-12"
+                    uploading={uploadingFavicon}
+                    onOpenLibrary={handleOpenFaviconPicker}
+                    onUpload={async file => {
+                      setUploadingFavicon(true)
+                      const url = await uploadToMediaLibrary(file)
+                      if (url) updateContactForm({ favicon: url })
+                      setUploadingFavicon(false)
+                    }}
+                    onClear={() => updateContactForm({ favicon: '' })}
+                  />
                 </div>
               </div>
-            </div>
+            </SectionShell>
           )}
 
           {editingHeaderFooter && (
-            <div className="flex-1 overflow-y-auto p-6">
-              <div className="max-w-2xl mx-auto bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 p-6">
-                <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-6">
-                  Rediger header og footer
-                </h2>
-                
+            <SectionShell eyebrow="Indhold" title="Header / Footer" width="max-w-2xl">
+              <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface)] p-5">
                 <div className="space-y-6">
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 border-b pb-2">Header</h3>
+                    <h3 className="admin-eyebrow border-b border-[var(--hairline)] pb-2">Header</h3>
                     <div className="grid grid-cols-2 gap-4">
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Knap tekst</label>
+                        <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Knap tekst</label>
                         <input
                           type="text"
                           value={contactForm.headerButtonText}
                           onChange={e => updateContactForm({ headerButtonText: e.target.value })}
-                          className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                          className="admin-input"
                         />
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <h3 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-3 border-b pb-2">Footer</h3>
+                    <h3 className="admin-eyebrow border-b border-[var(--hairline)] pb-2">Footer</h3>
                     <div className="space-y-4">
                       <div>
-                        <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Beskrivelse</label>
+                        <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Beskrivelse</label>
                         <input
                           type="text"
                           value={contactForm.footerDescription}
                           onChange={e => updateContactForm({ footerDescription: e.target.value })}
-                          className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
+                          className="admin-input"
                         />
                       </div>
                     </div>
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Kolonne 2 (Navigation)</h4>
-                    <div className="space-y-3 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
+                    <h4 className="text-[13px] font-medium leading-none text-[var(--ink-2)]">Kolonne 2 (Navigation)</h4>
+                    <div className="space-y-3 border-l-2 border-[var(--hairline)] pl-4">
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Overskrift</label>
+                        <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Overskrift</label>
                         <input
                           type="text"
                           value={contactForm.footerCol2Title}
                           onChange={e => updateContactForm({ footerCol2Title: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                          className="admin-input px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Links</label>
+                        <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Links</label>
                         <div className="space-y-2">
                           {(contactForm.footerCol2Links || []).map((link, index) => (
                             <div key={link.id} className="flex items-center gap-2">
@@ -1358,7 +1211,7 @@ function Dashboard() {
                                     updateContactForm({ footerCol2Links: newLinks })
                                   }}
                                   placeholder="Label"
-                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                  className="admin-input px-2 py-1.5 text-sm"
                                 />
                                 <input
                                   type="text"
@@ -1369,7 +1222,7 @@ function Dashboard() {
                                     updateContactForm({ footerCol2Links: newLinks })
                                   }}
                                   placeholder="URL"
-                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                  className="admin-input px-2 py-1.5 text-sm"
                                 />
                               </div>
                               <button
@@ -1377,7 +1230,7 @@ function Dashboard() {
                                   const newLinks = (contactForm.footerCol2Links || []).filter((_, i) => i !== index)
                                   updateContactForm({ footerCol2Links: newLinks })
                                 }}
-                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -1392,7 +1245,7 @@ function Dashboard() {
                               }
                               updateContactForm({ footerCol2Links: [...(contactForm.footerCol2Links || []), newLink] })
                             }}
-                            className="text-sm text-blue-500 hover:text-blue-600"
+                            className="text-[13px] font-medium text-[var(--accent)] transition-opacity hover:opacity-75"
                           >
                             + Tilføj link
                           </button>
@@ -1402,19 +1255,19 @@ function Dashboard() {
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Kolonne 3 (Services)</h4>
-                    <div className="space-y-3 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
+                    <h4 className="text-[13px] font-medium leading-none text-[var(--ink-2)]">Kolonne 3 (Services)</h4>
+                    <div className="space-y-3 border-l-2 border-[var(--hairline)] pl-4">
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Overskrift</label>
+                        <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Overskrift</label>
                         <input
                           type="text"
                           value={contactForm.footerCol3Title}
                           onChange={e => updateContactForm({ footerCol3Title: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                          className="admin-input px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Links</label>
+                        <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Links</label>
                         <div className="space-y-2">
                           {(contactForm.footerCol3Links || []).map((link, index) => (
                             <div key={link.id} className="flex items-center gap-2">
@@ -1428,7 +1281,7 @@ function Dashboard() {
                                     updateContactForm({ footerCol3Links: newLinks })
                                   }}
                                   placeholder="Label"
-                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                  className="admin-input px-2 py-1.5 text-sm"
                                 />
                                 <input
                                   type="text"
@@ -1439,7 +1292,7 @@ function Dashboard() {
                                     updateContactForm({ footerCol3Links: newLinks })
                                   }}
                                   placeholder="URL"
-                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                  className="admin-input px-2 py-1.5 text-sm"
                                 />
                               </div>
                               <button
@@ -1447,7 +1300,7 @@ function Dashboard() {
                                   const newLinks = (contactForm.footerCol3Links || []).filter((_, i) => i !== index)
                                   updateContactForm({ footerCol3Links: newLinks })
                                 }}
-                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -1462,7 +1315,7 @@ function Dashboard() {
                               }
                               updateContactForm({ footerCol3Links: [...(contactForm.footerCol3Links || []), newLink] })
                             }}
-                            className="text-sm text-blue-500 hover:text-blue-600"
+                            className="text-[13px] font-medium text-[var(--accent)] transition-opacity hover:opacity-75"
                           >
                             + Tilføj link
                           </button>
@@ -1472,19 +1325,19 @@ function Dashboard() {
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Kolonne 4</h4>
-                    <div className="space-y-3 pl-4 border-l-2 border-slate-200 dark:border-slate-600">
+                    <h4 className="text-[13px] font-medium leading-none text-[var(--ink-2)]">Kolonne 4</h4>
+                    <div className="space-y-3 border-l-2 border-[var(--hairline)] pl-4">
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">Overskrift</label>
+                        <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Overskrift</label>
                         <input
                           type="text"
                           value={contactForm.footerCol4Title}
                           onChange={e => updateContactForm({ footerCol4Title: e.target.value })}
-                          className="w-full px-3 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                          className="admin-input px-3 py-2 text-sm"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-2">Links</label>
+                        <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Links</label>
                         <div className="space-y-2">
                           {(contactForm.footerCol4Links || []).map((link, index) => (
                             <div key={link.id} className="flex items-center gap-2">
@@ -1498,7 +1351,7 @@ function Dashboard() {
                                     updateContactForm({ footerCol4Links: newLinks })
                                   }}
                                   placeholder="Label"
-                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                  className="admin-input px-2 py-1.5 text-sm"
                                 />
                                 <input
                                   type="text"
@@ -1509,7 +1362,7 @@ function Dashboard() {
                                     updateContactForm({ footerCol4Links: newLinks })
                                   }}
                                   placeholder="URL"
-                                  className="px-2 py-1.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white text-sm"
+                                  className="admin-input px-2 py-1.5 text-sm"
                                 />
                               </div>
                               <button
@@ -1517,7 +1370,7 @@ function Dashboard() {
                                   const newLinks = (contactForm.footerCol4Links || []).filter((_, i) => i !== index)
                                   updateContactForm({ footerCol4Links: newLinks })
                                 }}
-                                className="p-1.5 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
+                                className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
                               >
                                 <Trash2 size={16} />
                               </button>
@@ -1532,7 +1385,7 @@ function Dashboard() {
                               }
                               updateContactForm({ footerCol4Links: [...(contactForm.footerCol4Links || []), newLink] })
                             }}
-                            className="text-sm text-blue-500 hover:text-blue-600"
+                            className="text-[13px] font-medium text-[var(--accent)] transition-opacity hover:opacity-75"
                           >
                             + Tilføj link
                           </button>
@@ -1542,7 +1395,7 @@ function Dashboard() {
                   </div>
                 </div>
               </div>
-            </div>
+            </SectionShell>
           )}
 
           {editingCases && (
@@ -1802,37 +1655,11 @@ function Dashboard() {
           )}
 
           {editingMediaLibrary && (
-            <div className="flex min-h-0 flex-1 flex-col">
-              <div className="flex items-center justify-between gap-4 border-b border-[var(--hairline)] bg-[var(--surface)] px-6 py-3.5">
-                <div>
-                  <p className="admin-eyebrow mb-1">Indhold</p>
-                  <h2 className="text-[15px] font-semibold leading-tight text-[var(--ink)]">
-                    Mediebibliotek
-                  </h2>
-                </div>
-              </div>
-<<<<<<< Updated upstream
-            </div>
-          )}
-          
-          {selectedPage === null && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && !editingMediaLibrary && !editingHeaderFooter && (
-            <div className="flex-1 flex items-center justify-center text-slate-500 dark:text-slate-400">
-              <div className="text-center">
-                <Layout size={64} className="mx-auto mb-4 opacity-50" />
-                <p className="text-lg">Vælg en side fra menuen for at redigere</p>
-=======
-              <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
-                <div className="mx-auto max-w-6xl">
-                  <MediaLibrary />
-                </div>
->>>>>>> Stashed changes
-              </div>
-            </div>
+            <SectionShell eyebrow="Indhold" title="Mediebibliotek" width="max-w-6xl">
+              <MediaLibrary />
+            </SectionShell>
           )}
 
-<<<<<<< Updated upstream
-          {currentPage && !editingNavigation && !editingContactInfo && !editingCases && !editingTestimonials && !editingCompanyLogos && !editingMediaLibrary && !editingHeaderFooter && (
-=======
           {activeView === null && (
             <div className="flex flex-1 items-center justify-center px-6">
               <EmptyState
@@ -1844,7 +1671,6 @@ function Dashboard() {
           )}
 
           {currentPage && activeView === 'page' && (
->>>>>>> Stashed changes
             <>
               <div className="flex items-center justify-between gap-4 border-b border-[var(--hairline)] bg-[var(--surface)] px-6 py-3.5">
                 <div className="min-w-0">
@@ -2059,8 +1885,8 @@ function Dashboard() {
                   className="p-4 rounded-lg border border-[var(--hairline)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] transition-colors text-left"
                 >
                   <blockType.icon size={24} className="text-[var(--accent)] mb-2" />
-                  <div className="font-medium text-[var(--ink)] dark:text-white">{blockType.label}</div>
-                  <div className="text-xs text-[var(--ink-2)] text-[var(--ink-3)]">{blockType.description}</div>
+                  <div className="font-medium text-[var(--ink)]">{blockType.label}</div>
+                  <div className="text-xs text-[var(--ink-2)]">{blockType.description}</div>
                 </button>
               ))}
             </div>
@@ -2145,10 +1971,10 @@ function Dashboard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setDeleteConfirm(null)}>
           <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
             <div className="p-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-[var(--danger-soft)] bg-[var(--danger-soft)]/30 flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-full bg-[var(--danger-soft)] flex items-center justify-center mx-auto mb-4">
                 <Trash2 size={32} className="text-[var(--danger)]" />
               </div>
-              <h3 className="text-lg font-semibold text-[var(--ink)] dark:text-white mb-2">
+              <h3 className="text-lg font-semibold text-[var(--ink)] mb-2">
                 {deleteConfirmType === 'nav' ? 'Slet navigationspunkt?' : 
                  deleteConfirmType === 'child' ? 'Slet underpunkt?' :
                  deleteConfirmType === 'case' ? 'Slet case?' :
@@ -2156,7 +1982,7 @@ function Dashboard() {
                  deleteConfirmType === 'logo' ? 'Slet logo?' :
                  deleteConfirmType === 'user' ? 'Slet bruger?' : 'Slet side?'}
               </h3>
-              <p className="text-[var(--ink-2)] text-[var(--ink-3)]">
+              <p className="text-[var(--ink-2)]">
                 Er du sikker på at du vil slette dette? Denne handling kan ikke fortrydes.
               </p>
             </div>
@@ -2204,13 +2030,13 @@ function Dashboard() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setBlockDeleteConfirm(null)}>
           <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
             <div className="p-6 text-center">
-              <div className="w-16 h-16 rounded-full bg-[var(--danger-soft)] bg-[var(--danger-soft)]/30 flex items-center justify-center mx-auto mb-4">
+              <div className="w-16 h-16 rounded-full bg-[var(--danger-soft)] flex items-center justify-center mx-auto mb-4">
                 <Trash2 size={32} className="text-[var(--danger)]" />
               </div>
-              <h3 className="text-lg font-semibold text-[var(--ink)] dark:text-white mb-2">
+              <h3 className="text-lg font-semibold text-[var(--ink)] mb-2">
                 Slet sektion?
               </h3>
-              <p className="text-[var(--ink-2)] text-[var(--ink-3)]">
+              <p className="text-[var(--ink-2)]">
                 Er du sikker på at du vil slette denne sektion? Denne handling kan ikke fortrydes.
               </p>
             </div>
@@ -2458,7 +2284,7 @@ function Dashboard() {
               </a>
               <a
                 href={`mailto:${contactInfo.email}`}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] text-[var(--ink-2)] text-[var(--ink-3)] rounded-lg transition-colors font-medium"
+                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] text-[var(--ink-2)] rounded-lg transition-colors font-medium"
               >
                 <Mail size={18} />
                 {contactInfo.email || 'Ingen email'}
@@ -2475,30 +2301,17 @@ function getBlockLabel(type: string) {
   return blockTypes.find(b => b.type === type)?.label || type
 }
 
-function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocalContentRef }: { block: CMSBlock; onClose: () => void; onSave: (content: Record<string, any>) => void; onOpenMediaPicker?: (filter: 'image' | 'video', fieldKey: string) => void; updateLocalContentRef?: React.MutableRefObject<((fieldKey: string, url: string) => void) | null> }) {
+function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocalContentRef }: { block: CMSBlock; onClose: () => void; onSave: (content: Record<string, any>) => void; onOpenMediaPicker?: (filter: 'image' | 'video', fieldKey: string) => void; updateLocalContentRef?: React.MutableRefObject<((fieldKey: string | null, url?: string) => void) | null> }) {
   const [localContent, setLocalContent] = useState(block.content || {})
-<<<<<<< Updated upstream
   const mediaPickerOpenRef = useRef(false)
-  
+
+  // Re-sync from the CMS, but never while the media picker is open: the picker
+  // writes straight to the CMS, and syncing mid-flight would clobber the edit.
   useEffect(() => {
     if (!mediaPickerOpenRef.current) {
       setLocalContent(block.content || {})
     }
   }, [JSON.stringify(block.content)])
-=======
-
-  // The media picker writes straight to the CMS, so it pushes the new value in
-  // here too. Without this the field would look empty until the panel is reopened.
-  useEffect(() => {
-    if (!updateLocalContentRef) return
-    updateLocalContentRef.current = (fieldKey: string, url: string) => {
-      setLocalContent(prev => ({ ...prev, [fieldKey]: url }))
-    }
-    return () => {
-      updateLocalContentRef.current = null
-    }
-  }, [updateLocalContentRef])
->>>>>>> Stashed changes
 
   const handleSave = () => {
     const contentToSave = { ...localContent }
@@ -2519,23 +2332,29 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
     onOpenMediaPicker?.(fieldKey === 'backgroundVideo' ? 'video' : 'image', fieldKey)
   }
 
+  // The media picker writes straight to the CMS, so it pushes the new value in
+  // here too. Without this the field would look empty until the panel is reopened.
+  // A null fieldKey is the signal that the picker closed, which re-enables the
+  // block.content sync above.
   useEffect(() => {
-    if (updateLocalContentRef) {
-      updateLocalContentRef.current = (fieldKey: string | null, url?: string) => {
-        if (fieldKey === null) {
-          mediaPickerOpenRef.current = false
-          return
-        }
-        setLocalContent(prev => {
-          const newContent = { ...prev, [fieldKey]: url }
-          if (fieldKey === 'backgroundVideo' && url) {
-            newContent.backgroundType = 'video'
-          } else if (fieldKey === 'backgroundImage' && url) {
-            newContent.backgroundType = 'image'
-          }
-          return newContent
-        })
+    if (!updateLocalContentRef) return
+    updateLocalContentRef.current = (fieldKey: string | null, url?: string) => {
+      if (fieldKey === null) {
+        mediaPickerOpenRef.current = false
+        return
       }
+      setLocalContent(prev => {
+        const newContent = { ...prev, [fieldKey]: url }
+        if (fieldKey === 'backgroundVideo' && url) {
+          newContent.backgroundType = 'video'
+        } else if (fieldKey === 'backgroundImage' && url) {
+          newContent.backgroundType = 'image'
+        }
+        return newContent
+      })
+    }
+    return () => {
+      updateLocalContentRef.current = null
     }
   }, [updateLocalContentRef])
 
@@ -2691,10 +2510,10 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
             </div>
           )}
           <div className="border-t border-[var(--hairline)] pt-4 mt-4">
-            <h4 className="text-sm font-medium text-[var(--ink-2)] text-[var(--ink-3)] mb-3">Knapper</h4>
+            <h4 className="text-sm font-medium text-[var(--ink-2)] mb-3">Knapper</h4>
             {[1, 2].map((num) => (
-              <div key={num} className="mb-4 p-3 bg-[var(--surface-sunken)] bg-[var(--surface-hover)]/50 rounded-lg">
-                <label className="block text-xs font-medium text-[var(--ink-2)] text-[var(--ink-3)] mb-2">Knap {num}</label>
+              <div key={num} className="mb-4 p-3 bg-[var(--surface-sunken)] rounded-lg">
+                <label className="block text-xs font-medium text-[var(--ink-2)] mb-2">Knap {num}</label>
                 <div className="space-y-2">
                   <input
                     type="text"
@@ -2720,16 +2539,16 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
               id="showStats"
               checked={localContent.showStats !== false}
               onChange={e => setLocalContent({ ...localContent, showStats: e.target.checked })}
-              className="w-4 h-4 rounded border-[var(--hairline-strong)] border-[var(--hairline-strong)]"
+              className="w-4 h-4 rounded border-[var(--hairline-strong)]"
             />
-            <label htmlFor="showStats" className="text-sm text-[var(--ink-2)] text-[var(--ink-3)]">Vis statistik</label>
+            <label htmlFor="showStats" className="text-sm text-[var(--ink-2)]">Vis statistik</label>
           </div>
           {localContent.showStats !== false && (
             <div className="border-t border-[var(--hairline)] pt-4 mt-4">
-              <h4 className="text-sm font-medium text-[var(--ink-2)] text-[var(--ink-3)] mb-3">Statistik</h4>
+              <h4 className="text-sm font-medium text-[var(--ink-2)] mb-3">Statistik</h4>
               {[1, 2, 3].map((num) => (
-                <div key={num} className="mb-4 p-3 bg-[var(--surface-sunken)] bg-[var(--surface-hover)]/50 rounded-lg">
-                  <label className="block text-xs font-medium text-[var(--ink-2)] text-[var(--ink-3)] mb-2">Stat {num}</label>
+                <div key={num} className="mb-4 p-3 bg-[var(--surface-sunken)] rounded-lg">
+                  <label className="block text-xs font-medium text-[var(--ink-2)] mb-2">Stat {num}</label>
                   <div className="grid grid-cols-2 gap-2">
                     <input
                       type="text"
@@ -2864,7 +2683,7 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
                 <button
                   type="button"
                   onClick={() => handleMediaClick('image')}
-                  className="px-4 py-2 bg-[var(--surface-hover)] text-[var(--ink-2)] text-[var(--ink-3)] rounded-lg hover:bg-[var(--surface-hover)] dark:hover:bg-[var(--surface-sunken)]0"
+                  className="px-4 py-2 bg-[var(--surface-hover)] text-[var(--ink-2)] rounded-lg hover:bg-[var(--surface-hover)] dark:hover:bg-[var(--surface-sunken)]0"
                 >
                   <ImageIcon size={18} />
                 </button>
@@ -2889,7 +2708,7 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
       {block.type === 'stats' && (
         <>
           <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-[var(--ink-2)] text-[var(--ink-3)]">Statistikker</label>
+            <label className="block text-sm font-medium text-[var(--ink-2)]">Statistikker</label>
             <button
               type="button"
               onClick={() => {
@@ -2948,7 +2767,7 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
       {block.type === 'gallery' && (
         <>
           <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-[var(--ink-2)] text-[var(--ink-3)]">Galleri elementer</label>
+            <label className="block text-sm font-medium text-[var(--ink-2)]">Galleri elementer</label>
             <button
               type="button"
               onClick={() => {
@@ -3082,9 +2901,9 @@ function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pag
               id="editNewTab"
               checked={newTab}
               onChange={e => setNewTab(e.target.checked)}
-              className="w-4 h-4 rounded border-[var(--hairline-strong)] border-[var(--hairline-strong)]"
+              className="w-4 h-4 rounded border-[var(--hairline-strong)]"
             />
-            <label htmlFor="editNewTab" className="text-sm text-[var(--ink-2)] text-[var(--ink-3)]">Åbn i ny fane</label>
+            <label htmlFor="editNewTab" className="text-sm text-[var(--ink-2)]">Åbn i ny fane</label>
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-[var(--hairline)] px-5 py-3.5">
@@ -3125,21 +2944,15 @@ function MetaEditModal({ page, onClose, onSave, onSelectImage }: { page: any; on
         </div>
         <div className="p-6 space-y-4">
           <div>
-<<<<<<< Updated upstream
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Slug (URL)</label>
-            <input
-              type="text"
+            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Slug (URL)</label>
+            <Input
               value={slug}
               onChange={e => setSlug(e.target.value)}
-              className="w-full px-4 py-2 rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-700 text-slate-900 dark:text-white"
               placeholder={page.title?.toLowerCase().replace(/\s+/g, '-') || ''}
             />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Meta Titel</label>
-=======
             <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Meta Titel</label>
->>>>>>> Stashed changes
             <input
               type="text"
               value={metaTitle}
@@ -3158,40 +2971,29 @@ function MetaEditModal({ page, onClose, onSave, onSelectImage }: { page: any; on
               placeholder="Kort beskrivelse af siden..."
             />
           </div>
-<<<<<<< Updated upstream
           <div>
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Meta Billede</label>
+            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Meta Billede</label>
             <div className="flex items-center gap-3">
-              <div className="flex-1 h-24 rounded-lg border-2 border-dashed border-slate-300 dark:border-slate-600 overflow-hidden bg-slate-50 dark:bg-slate-700">
+              <div className="h-24 flex-1 overflow-hidden rounded-lg border border-dashed border-[var(--hairline-strong)] bg-[var(--surface-sunken)]">
                 {metaImage ? (
-                  <img src={metaImage} alt="Meta" className="w-full h-full object-cover" />
+                  <img src={metaImage} alt="Meta" className="h-full w-full object-cover" />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-slate-400 text-sm">Ingen billede valgt</div>
+                  <div className="flex h-full w-full items-center justify-center text-[13px] text-[var(--ink-3)]">
+                    Ingen billede valgt
+                  </div>
                 )}
               </div>
-              <button
-                type="button"
-                onClick={() => onSelectImage?.()}
-                className="px-3 py-2 text-sm bg-slate-100 dark:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-500 transition-colors"
-              >
+              <Button variant="secondary" size="sm" onClick={() => onSelectImage?.()}>
                 Vælg billede
-              </button>
+              </Button>
             </div>
           </div>
-          <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Google Søgning Preview</label>
-            <div className="bg-white dark:bg-slate-100 rounded-lg p-4 border border-slate-200">
-              <div className="flex flex-col">
-                <span className="text-sm text-slate-500 truncate">
-                  staymain.dk{slug === 'home' ? '' : `/${slug}`}
-=======
           <div className="border-t border-[var(--hairline)] pt-4">
             <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Google Søgning Preview</label>
-            <div className="bg-white bg-[var(--surface-hover)] rounded-lg p-4 border border-[var(--hairline)]">
+            <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-sunken)] p-4">
               <div className="flex flex-col">
                 <span className="text-sm text-[var(--ink-2)] truncate">
-                  staymain.dk{page.slug === 'home' ? '' : `/${page.slug}`}
->>>>>>> Stashed changes
+                  staymain.dk{slug === 'home' ? '' : `/${slug}`}
                 </span>
                 <span className="text-xl text-[var(--accent)] hover:underline cursor-pointer truncate">
                   {metaTitle || `${page.title} | StayMain`}
@@ -3363,9 +3165,9 @@ function AddNavItemModal({ pages, navigation, onClose, onSave }: { pages: any[];
               id="newTab"
               checked={newTab}
               onChange={e => setNewTab(e.target.checked)}
-              className="w-4 h-4 rounded border-[var(--hairline-strong)] border-[var(--hairline-strong)]"
+              className="w-4 h-4 rounded border-[var(--hairline-strong)]"
             />
-            <label htmlFor="newTab" className="text-sm text-[var(--ink-2)] text-[var(--ink-3)]">Åbn i ny fane</label>
+            <label htmlFor="newTab" className="text-sm text-[var(--ink-2)]">Åbn i ny fane</label>
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 border-t border-[var(--hairline)] px-5 py-3.5">
@@ -3413,7 +3215,7 @@ function CreateUserModal({ onClose, onSave, onGenerate }: { onClose: () => void;
         </div>
         <div className="p-6 space-y-4">
           {error && (
-            <div className="p-3 bg-[var(--danger-soft)] bg-[var(--danger-soft)]/30 text-[var(--danger)] text-[var(--danger)] rounded-lg text-sm">
+            <div className="p-3 bg-[var(--danger-soft)] text-[var(--danger)] rounded-lg text-sm">
               {error}
             </div>
           )}
@@ -3438,10 +3240,10 @@ function CreateUserModal({ onClose, onSave, onGenerate }: { onClose: () => void;
               />
               <button
                 onClick={() => setPassword(onGenerate())}
-                className="px-3 py-2 bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] rounded-lg transition-colors"
+                className="px-3 py-2 bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)] rounded-lg transition-colors"
                 title="Generer kode"
               >
-                <RefreshCw size={18} className="text-[var(--ink-2)] text-[var(--ink-3)]" />
+                <RefreshCw size={18} className="text-[var(--ink-2)]" />
               </button>
             </div>
           </div>
@@ -3515,7 +3317,7 @@ function EditUserModal({ user, onClose, onSaveEmail, onSavePassword, onDelete, u
         </div>
         <div className="p-6 space-y-4">
           {error && (
-            <div className="p-3 bg-[var(--danger-soft)] bg-[var(--danger-soft)]/30 text-[var(--danger)] text-[var(--danger)] rounded-lg text-sm">
+            <div className="p-3 bg-[var(--danger-soft)] text-[var(--danger)] rounded-lg text-sm">
               {error}
             </div>
           )}
@@ -3563,7 +3365,7 @@ function EditUserModal({ user, onClose, onSaveEmail, onSavePassword, onDelete, u
             <button 
               onClick={onDelete}
               disabled={loading}
-              className="px-4 py-2 text-[var(--danger)] hover:bg-[var(--danger-soft)] hover:bg-[var(--danger-soft)]/20 rounded-lg transition-colors disabled:opacity-50"
+              className="px-4 py-2 text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-lg transition-colors disabled:opacity-50"
             >
               Slet bruger
             </button>
@@ -3691,7 +3493,7 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
           </div>
         </div>
         <div className="px-6 py-4 border-t border-[var(--hairline)] flex justify-between gap-3">
-          <button onClick={onDelete} className="px-4 py-2 text-[var(--danger)] hover:bg-[var(--danger-soft)] hover:bg-[var(--danger-soft)]/20 rounded-lg transition-colors">
+          <button onClick={onDelete} className="px-4 py-2 text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-lg transition-colors">
             Slet case
           </button>
           <div className="flex gap-3">
@@ -3785,7 +3587,7 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
           </div>
         </div>
         <div className="px-6 py-4 border-t border-[var(--hairline)] flex justify-between gap-3">
-          <button onClick={onDelete} className="px-4 py-2 text-[var(--danger)] hover:bg-[var(--danger-soft)] hover:bg-[var(--danger-soft)]/20 rounded-lg transition-colors">
+          <button onClick={onDelete} className="px-4 py-2 text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-lg transition-colors">
             Slet udtalelse
           </button>
           <div className="flex gap-3">
@@ -3960,7 +3762,7 @@ function MediaLibrary() {
               className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                 filter === cat.id
                   ? 'bg-[var(--accent)] text-white'
-                  : 'bg-[var(--surface-hover)] text-[var(--ink-2)] text-[var(--ink-3)] hover:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)]'
+                  : 'bg-[var(--surface-hover)] text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)]'
               }`}
             >
               <cat.icon size={14} />
@@ -4025,10 +3827,10 @@ function MediaLibrary() {
                 </div>
               </div>
               <div className="p-3">
-                <p className="text-sm font-medium text-[var(--ink)] dark:text-white truncate" title={file.name}>
+                <p className="text-sm font-medium text-[var(--ink)] truncate" title={file.name}>
                   {file.name}
                 </p>
-                <p className="text-xs text-[var(--ink-2)] text-[var(--ink-3)]">
+                <p className="text-xs text-[var(--ink-2)]">
                   {formatSize(file.size)}
                 </p>
               </div>
@@ -4123,7 +3925,7 @@ function MediaPickerModal({ onSelect, onClose, filter: initialFilter }: MediaPic
                 className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
                   filter === cat.id
                     ? 'bg-[var(--accent)] text-white'
-                    : 'bg-[var(--surface-hover)] text-[var(--ink-2)] text-[var(--ink-3)] hover:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)]'
+                    : 'bg-[var(--surface-hover)] text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)]'
                 }`}
               >
                 <cat.icon size={14} />
@@ -4163,7 +3965,7 @@ function MediaPickerModal({ onSelect, onClose, filter: initialFilter }: MediaPic
                     )}
                   </div>
                   <div className="p-2 text-center">
-                    <p className="text-xs text-[var(--ink-2)] text-[var(--ink-3)] truncate">{file.name}</p>
+                    <p className="text-xs text-[var(--ink-2)] truncate">{file.name}</p>
                   </div>
                 </button>
               ))}
@@ -4229,7 +4031,7 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
                 onClick={() => setShowPicker(true)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-[var(--hairline-strong)] px-4 py-3 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]"
               >
-                <Folder size={18} className="mr-2 text-[var(--ink-3)]" />
+                <Folder size={18} className="text-[var(--ink-3)]" />
                 <span className="text-[var(--ink-2)]">Mediebibliotek</span>
               </button>
               <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-lg border border-dashed border-[var(--hairline-strong)] px-4 py-3 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:border-[var(--accent)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]">
@@ -4237,14 +4039,14 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
                   const file = e.target.files?.[0]
                   if (file) handleUpload(file)
                 }} />
-                <Upload size={18} className="mr-2 text-[var(--ink-3)]" />
+                <Upload size={18} className="text-[var(--ink-3)]" />
                 <span className="text-[var(--ink-2)]">{uploading ? 'Uploader...' : 'Upload fra pc'}</span>
               </label>
             </div>
           </div>
         </div>
         <div className="px-6 py-4 border-t border-[var(--hairline)] flex justify-between gap-3">
-          <button onClick={onDelete} className="px-4 py-2 text-[var(--danger)] hover:bg-[var(--danger-soft)] hover:bg-[var(--danger-soft)]/20 rounded-lg transition-colors">
+          <button onClick={onDelete} className="px-4 py-2 text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-lg transition-colors">
             Slet logo
           </button>
           <div className="flex gap-3">

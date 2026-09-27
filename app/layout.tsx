@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import './globals.css'
 import { CMSProvider } from '@/lib/cms'
+import { LanguageProvider } from '@/lib/context'
 
 export const metadata: Metadata = {
   title: 'StayMain | Web Design Agency',
@@ -26,24 +27,20 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   return (
-    <html lang="da" suppressHydrationWarning>
+    // globals.css sets `scroll-behavior: smooth` on <html> for the anchor
+    // links. Next.js 16 no longer overrides that during route transitions, so
+    // without this attribute every client-side navigation would animate a long
+    // smooth scroll to the top. This restores the previous behaviour.
+    <html lang="da" suppressHydrationWarning data-scroll-behavior="smooth">
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="antialiased">
-<<<<<<< Updated upstream
-        <ThemeProvider>
-          <CMSProvider>
-            {children}
-          </CMSProvider>
-        </ThemeProvider>
-=======
         <LanguageProvider>
           <CMSProvider>
             {children}
           </CMSProvider>
         </LanguageProvider>
->>>>>>> Stashed changes
       </body>
     </html>
   )

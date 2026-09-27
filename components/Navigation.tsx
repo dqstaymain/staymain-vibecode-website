@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Sun, Moon } from 'lucide-react'
 import Link from 'next/link'
-import { useTheme } from '@/lib/theme'
+import { useLanguage } from '@/lib/context'
 import { useCMS } from '@/lib/cms'
 
 function HamburgerIcon({ isOpen, onClick }: { isOpen: boolean; onClick: () => void }) {
@@ -45,26 +45,23 @@ function HamburgerIcon({ isOpen, onClick }: { isOpen: boolean; onClick: () => vo
 }
 
 export default function Navigation() {
-  const { theme, toggleTheme, mounted } = useTheme()
+  const { lang, t, toggleLang, theme, toggleTheme } = useLanguage()
   const { navigation, contactInfo, supabaseReady } = useCMS()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState<string | null>(null)
   const [mobileDropdownOpen, setMobileDropdownOpen] = useState<string | null>(null)
-<<<<<<< Updated upstream
-  const dropdownRef = useRef<HTMLDivElement>(null)
-  const [isReady, setIsReady] = useState(false)
-
-  useEffect(() => {
-    if (mounted && supabaseReady) {
-      setTimeout(() => setIsReady(true), 100)
-    }
-  }, [mounted, supabaseReady])
-=======
   // One ref per dropdown. A single shared ref was overwritten on every render,
   // so outside-click detection only ever worked for the last item in the list.
   const dropdownRefs = useRef(new Map<string, HTMLDivElement>())
->>>>>>> Stashed changes
+  const [isReady, setIsReady] = useState(false)
+
+  // The theme toggle waits for the CMS so it never renders before hydration.
+  useEffect(() => {
+    if (!supabaseReady) return
+    const id = setTimeout(() => setIsReady(true), 100)
+    return () => clearTimeout(id)
+  }, [supabaseReady])
 
   useEffect(() => {
     const handleScroll = () => {
@@ -157,20 +154,9 @@ export default function Navigation() {
                     </button>
 
                     {dropdownOpen === item.id && (
-<<<<<<< Updated upstream
-                      <div 
-                        className="absolute top-full left-1/2 -translate-x-1/2 mt-6 w-64"
-                        style={{ 
-                          animation: 'dropdownFadeIn 0.3s ease forwards',
-                        }}
-=======
                       <div
-                        // Visibility is driven by state, not only :hover, so
-                        // keyboard/touch activation actually shows the panel.
-                        // pt-4 bridges the gap so the pointer can travel from the
-                        // button onto the panel without :hover being lost.
-                        className={`absolute top-full left-1/2 -translate-x-1/2 pt-4 w-56 transition-opacity duration-200 ${dropdownOpen === item.id ? 'opacity-100 visible' : 'opacity-0 invisible'}`}
->>>>>>> Stashed changes
+                        className="absolute top-full left-1/2 w-64 -translate-x-1/2 pt-6"
+                        style={{ animation: 'dropdownFadeIn 0.3s ease forwards' }}
                       >
                         <div className="bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl rounded-2xl shadow-2xl border border-white/20 dark:border-slate-700/30 overflow-hidden">
                           <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-l border-t border-white/20 dark:border-slate-700/30 rotate-45" />
@@ -248,18 +234,12 @@ export default function Navigation() {
         </div>
       </nav>
 
-<<<<<<< Updated upstream
       <div className={`fixed inset-0 z-40 bg-slate-950/50 backdrop-blur-2xl lg:hidden transition-all duration-500 ease-out ${mobileOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}>
         <div className="flex flex-col h-full pt-20 sm:pt-24" style={{ animation: mobileOpen ? 'mobileMenuIn 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards' : 'none' }}>
-          <nav className="flex-1 px-6 overflow-hidden relative">
-=======
-      <div className={`fixed inset-0 z-40 bg-white dark:bg-slate-900 lg:hidden transition-all duration-500 ease-out ${mobileOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-full pointer-events-none'}`}>
-        <div className="flex flex-col h-full pt-20 sm:pt-24">
           {/* min-h-0 lets the flex child shrink, and overflow-y-auto makes the
               list scrollable. It was overflow-hidden, so the lower links and the
               CTA were unreachable on short viewports. */}
-          <nav className="flex-1 min-h-0 px-6 overflow-y-auto relative">
->>>>>>> Stashed changes
+          <nav className="flex-1 min-h-0 overflow-y-auto px-6 relative">
             <div 
               className={`absolute inset-0 px-6 transition-all duration-300 ease-out ${
                 mobileDropdownOpen ? '-translate-x-full opacity-0' : 'translate-x-0 opacity-100'
