@@ -56,7 +56,9 @@
   --success-soft: #0f2419;
 }
 
-/* Reset the public site's serif heading rule inside the admin. */
+/* Reset the public site's serif heading rule inside the admin. The preview is
+   exempt by construction: it renders the page in an iframe, so it loads the
+   public stylesheet in its own document and keeps the real typography. */
 .admin-shell h1,
 .admin-shell h2,
 .admin-shell h3,

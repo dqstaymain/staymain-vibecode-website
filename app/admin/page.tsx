@@ -48,7 +48,8 @@ import {
   Headphones,
   AlertTriangle,
   TriangleAlert,
-  PanelTop
+  PanelTop,
+  Monitor
 } from 'lucide-react'
 import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo } from '@/lib/cms'
 import { uploadImage, authHeaders } from '@/lib/supabase'
@@ -71,6 +72,7 @@ import {
   SectionShell,
   cx,
 } from './ui'
+import { PagePreview } from './page-preview'
 
 function generateId(prefix: string = 'id'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -277,6 +279,8 @@ function Dashboard() {
   const [panelSelectedType, setPanelSelectedType] = useState<CMSBlock['type'] | null>(null)
   const [showComponentPicker, setShowComponentPicker] = useState(false)
   const [editingBlock, setEditingBlock] = useState<string | null>(null)
+  const [showPreview, setShowPreview] = useState(true)
+  const [previewRevision, setPreviewRevision] = useState(0)
   const blockEditRef = useRef<((fieldKey: string | null, url?: string) => void) | null>(null)
   const [editingMeta, setEditingMeta] = useState(false)
   const [editingNavigation, setEditingNavigation] = useState(false)
@@ -398,6 +402,17 @@ function Dashboard() {
     }
   }, [isAuthenticated, router])
 
+  // Derived above the auth gate because the hook below depends on it, and no
+  // hook may sit after an early return.
+  const currentPage = pages.find(p => p.slug === selectedPage)
+
+  // Bumped whenever the saved blocks change, so the preview iframe reloads and
+  // shows the committed result rather than a stale document.
+  useEffect(() => {
+    if (!isAuthenticated || !isReady) return
+    setPreviewRevision(r => r + 1)
+  }, [currentPage?.blocks, isAuthenticated, isReady])
+
   if (!isAuthenticated || !isReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[var(--surface-hover)] bg-[var(--surface-sunken)]">
@@ -405,8 +420,6 @@ function Dashboard() {
       </div>
     )
   }
-
-  const currentPage = pages.find(p => p.slug === selectedPage)
 
   const handleLogout = () => {
     logout()
@@ -1671,7 +1684,7 @@ function Dashboard() {
           )}
 
           {currentPage && activeView === 'page' && (
-            <>
+            <div className="flex min-h-0 flex-1 flex-col">
               <div className="flex items-center justify-between gap-4 border-b border-[var(--hairline)] bg-[var(--surface)] px-6 py-3.5">
                 <div className="min-w-0">
                   <p className="admin-eyebrow mb-1">
@@ -1686,6 +1699,16 @@ function Dashboard() {
                     {currentPage.blocks.length}{' '}
                     {currentPage.blocks.length === 1 ? 'sektion' : 'sektioner'}
                   </span>
+                  <Button
+                    variant={showPreview ? 'secondary' : 'ghost'}
+                    size="sm"
+                    onClick={() => setShowPreview(v => !v)}
+                    aria-pressed={showPreview}
+                    title="Vis eller skjul preview af siden"
+                  >
+                    <Monitor size={15} />
+                    Preview
+                  </Button>
                   <Button variant="ghost" size="sm" onClick={() => setEditingMeta(true)}>
                     <Search size={15} />
                     SEO
@@ -1701,7 +1724,17 @@ function Dashboard() {
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto px-6 py-6">
+              {/* Outline on the left, preview on the right. min-h-0 on both
+                  columns is what lets each scroll inside a bounded height
+                  instead of stretching the row. */}
+              <div className="flex min-h-0 flex-1">
+                <div
+                  className={cx(
+                    'min-h-0 min-w-0 flex-1 flex-col',
+                    showPreview ? 'hidden lg:flex' : 'flex'
+                  )}
+                >
+                  <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
                 <div className="mx-auto max-w-3xl">
                   <div className="admin-spine space-y-1.5">
                     {currentPage.blocks.map((block, index) => {
@@ -1820,7 +1853,15 @@ function Dashboard() {
                       Siden er tom. Tilføj en sektion for at komme i gang.
                     </p>
                   )}
+                  </div>
                 </div>
+                </div>
+
+                {showPreview && (
+                  <div className="min-h-0 w-full shrink-0 lg:w-[24rem] xl:w-[28rem]">
+                    <PagePreview slug={currentPage.slug} revision={previewRevision} />
+                  </div>
+                )}
               </div>
 
               {editingBlock && currentPage.blocks.find(b => b.id === editingBlock) && (
@@ -1864,11 +1905,11 @@ function Dashboard() {
                   />
                 </SlideOver>
               )}
-            </>
-
+              </div>
           )}
         </main>
       </div>
+
 
       {showComponentPicker && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComponentPicker(false)}>
@@ -2017,7 +2058,7 @@ function Dashboard() {
                   }
                   setDeleteConfirm(null)
                 }}
-                className="px-4 py-2 bg-[var(--danger-soft)]0 hover:opacity-90 text-white rounded-lg transition-colors"
+                className="inline-flex h-9 items-center justify-center rounded-md bg-[var(--danger)] px-3.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
               >
                 Slet
               </button>
@@ -2052,7 +2093,7 @@ function Dashboard() {
                   removeBlock(blockDeleteConfirm.pageSlug, blockDeleteConfirm.blockId)
                   setBlockDeleteConfirm(null)
                 }}
-                className="px-4 py-2 bg-[var(--danger-soft)]0 hover:opacity-90 text-white rounded-lg transition-colors"
+                className="inline-flex h-9 items-center justify-center rounded-md bg-[var(--danger)] px-3.5 text-sm font-medium text-white transition-opacity hover:opacity-90"
               >
                 Slet
               </button>
@@ -2445,7 +2486,7 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
                       delete newContent.backgroundImage
                       setLocalContent(newContent)
                     }}
-                    className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-[var(--danger-soft)]0 hover:opacity-90 text-white rounded-lg transition-colors"
+                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md bg-[var(--danger)] text-white transition-opacity hover:opacity-90"
                   >
                     <X size={18} />
                   </button>
@@ -2487,7 +2528,7 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
                       }
                       setLocalContent(newContent)
                     }}
-                    className="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-[var(--danger-soft)]0 hover:opacity-90 text-white rounded-lg transition-colors"
+                    className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md bg-[var(--danger)] text-white transition-opacity hover:opacity-90"
                   >
                     <X size={18} />
                   </button>
@@ -2683,7 +2724,7 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
                 <button
                   type="button"
                   onClick={() => handleMediaClick('image')}
-                  className="px-4 py-2 bg-[var(--surface-hover)] text-[var(--ink-2)] rounded-lg hover:bg-[var(--surface-hover)] dark:hover:bg-[var(--surface-sunken)]0"
+                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--surface-hover)] px-3.5 text-sm font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-sunken)]"
                 >
                   <ImageIcon size={18} />
                 </button>
@@ -2695,7 +2736,7 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
                 <button
                   type="button"
                   onClick={() => setLocalContent({ ...localContent, image: '' })}
-                  className="absolute top-2 right-2 p-1 bg-[var(--danger-soft)]0 text-white rounded-full hover:opacity-90"
+                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md bg-[var(--danger)] text-white transition-opacity hover:opacity-90"
                 >
                   <X size={14} />
                 </button>
