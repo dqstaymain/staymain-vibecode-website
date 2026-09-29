@@ -23,24 +23,16 @@ const SECTIONS = [
 ]
 
 /**
- * Confirms the saved session from global setup is still good.
+ * Navigates to a workspace route and waits for it to render.
  *
- * The login itself happens once per run; without it every test made its own
- * Supabase auth round trip, which was both slow and the source of intermittent
- * timeouts waiting for the CMS.
+ * The session was captured once in global setup. There is deliberately no login
+ * fallback here: the admin renders client-side, so a momentary "Indlaeser..."
+ * would look like "no session" and send the test to /admin/login, which then
+ * redirects straight back because the session is in fact valid - and
+ * #login-email never appears.
  */
-async function login(page: Page) {
-  await page.goto('/admin/menu')
-  const rail = page.locator('aside').first()
-  if ((await rail.count()) === 0) {
-    // No stored session (credentials absent, or it expired): fall back.
-    await page.goto('/admin/login')
-    await page.locator('#login-email').waitFor({ state: 'visible', timeout: 30_000 })
-    await page.locator('#login-email').fill(CREDENTIALS.email)
-    await page.locator('#login-password').fill(CREDENTIALS.password)
-    await page.getByRole('button', { name: 'Log ind' }).click()
-    await page.waitForURL(/\/admin\/[a-z-]+/, { timeout: 30_000 })
-  }
+async function login(page: Page, path = '/admin/menu') {
+  await page.goto(path)
   await expect(page.locator('aside').first()).toBeVisible({ timeout: 30_000 })
 }
 
