@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -21,7 +21,6 @@ import {
   Globe,
   Search,
   Link2,
-  ChevronDown,
   Menu,
   Pencil,
   X,
@@ -33,7 +32,6 @@ import {
   Building2,
   FilePlus,
   FileText,
-  FileX,
   Briefcase,
   Quote,
   Users,
@@ -46,13 +44,44 @@ import {
   Loader2,
   Upload,
   Headphones,
-  AlertTriangle,
   TriangleAlert,
   PanelTop,
   Monitor
 } from 'lucide-react'
 import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo } from '@/lib/cms'
 import { uploadImage, authHeaders } from '@/lib/supabase'
+import {
+  DndContext,
+  closestCenter,
+  pointerWithin,
+  type Active,
+  type Over,
+  type CollisionDetection,
+  type DragEndEvent,
+  type DragOverEvent,
+} from '@dnd-kit/core'
+import { useDndSensors } from './dnd'
+import {
+  ADMIN_SECTIONS,
+  DEFAULT_SECTION,
+  sectionHref,
+  type AdminSection,
+} from './sections'
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
+import {
+  SortableBlockRow,
+  BlockSortableList,
+  ListEndZone,
+  disarmRowClick,
+} from './dnd-items'
+import {
+  SortableNavList,
+  flattenNav,
+  navPathOf,
+  navRowId,
+  resolveNavDrop,
+  rebuildNavTree,
+} from './nav-list'
 import {
   Button,
   IconButton,
@@ -262,8 +291,107 @@ const blockTypes = [
   { type: 'contact', label: 'Kontakt', icon: FileText, description: 'Kontaktformular' },
 ]
 
-function Dashboard() {
-  const { pages, navigation, users, contactInfo, isAuthenticated, currentUser, supabaseReady, logout, createPage, updatePageDetails, deletePage, addBlock, removeBlock, moveBlock, updateBlockContent, updatePageMeta, moveNavItem, updateNavItem, addNavItem, removeNavItem, removeNavItemFromParent, updateNavigation, moveNavItemToParent, moveChildItem, convertToDropdown, addUser, updateUser, updateUserPassword, deleteUser, generatePassword, fetchUsers, updateContactInfo, cases, testimonials, companyLogos, addCase, updateCase, deleteCase, addTestimonial, updateTestimonial, deleteTestimonial, addCompanyLogo, updateCompanyLogo, deleteCompanyLogo } = useCMS()
+/**
+ * Outcome of a menu drag: a legal landing gap, an explicitly refused one, or
+ * nothing to report. Distinguishing "blocked" from "none" is what lets the row
+ * show that a drop is not allowed instead of silently doing nothing.
+ */
+type NavDropPlan =
+  | { kind: 'move'; path: string; side: 'top' | 'bottom'; depth: number }
+  | { kind: 'blocked'; path: string; side: 'top' | 'bottom' }
+  | { kind: 'none' }
+
+export type { NavDropPlan }
+
+const NO_DROP: NavDropPlan = { kind: 'none' }
+
+/**
+ * Which gap a dragged row is aiming at, from indices alone.
+ *
+ * The block editor already works this way, and it is why its line stays put.
+ * Reading the pointer's position inside the hovered row looks more direct, but
+ * the sorting strategy is translating rows to open the gap, so both rows move
+ * while you compare them and the answer oscillates near a row's midpoint.
+ * Direction of travel is stable: up means the gap above, down means the gap below.
+ */
+function resolveReorderSide(fromIndex: number, overIndex: number): 'top' | 'bottom' {
+  return fromIndex > overIndex ? 'top' : 'bottom'
+}
+
+interface BlockDropTarget {
+  /** Index being dragged away from. */
+  from: number
+  /** Index the block should end up at. */
+  to: number
+  /** Which edge of the hovered row shows the insertion line. */
+  side: 'top' | 'bottom'
+}
+
+/**
+ * Single source of truth for both the insertion line and the mutation that runs
+ * on drop. Previously the highlight and the resulting order were computed
+ * separately, which is how a block could land somewhere other than where the
+ * line was drawn.
+ *
+ * The gap comes from which way the block is travelling, not from which half of
+ * the row the pointer is over: the hovered row is itself being displaced, and
+ * this is also exactly what the final splice will do.
+ */
+function resolveBlockDrop(active: Active, over: Over, blocks: CMSBlock[]): BlockDropTarget | null {
+  if (over.id === 'list-end') {
+    const from = blocks.findIndex(b => b.id === active.id)
+    if (from === -1 || from === blocks.length - 1) return null
+    return { from, to: blocks.length, side: 'bottom' }
+  }
+  const overIndex = blocks.findIndex(b => b.id === over.id)
+  if (overIndex === -1) return null
+
+  const from = blocks.findIndex(b => b.id === active.id)
+  if (from === -1 || from === overIndex) return null
+  return from > overIndex
+    ? { from, to: overIndex, side: 'top' }
+    : { from, to: overIndex, side: 'bottom' }
+}
+
+/**
+ * Icons for the rail, keyed by section.
+ *
+ * The section list itself lives in ./sections, which the server route imports to
+ * validate the URL. Icons stay here because they are only ever rendered by the
+ * client, and pulling them into a shared module would drag the client boundary
+ * with them.
+ */
+const SECTION_ICONS: Record<AdminSection, React.ReactNode> = {
+  sider: <FileText size={15} />,
+  generelt: <Settings size={15} />,
+  'header-footer': <PanelTop size={15} />,
+  cases: <Briefcase size={15} />,
+  anmeldelser: <Quote size={15} />,
+  logoer: <Users size={15} />,
+  mediebibliotek: <Folder size={15} />,
+  menu: <Menu size={15} />,
+}
+
+/**
+ * The admin shell, shared by every route.
+ *
+ * Rendered by `/admin/[section]` and by `/admin/sider/[...slug]`, so every
+ * screen has a URL that can be linked to and so Back works. The props say which
+ * screen to show; the component no longer decides that for itself.
+ */
+export function AdminWorkspace({
+  initialSlug,
+  initialView = DEFAULT_SECTION,
+  startCreatingPage,
+}: {
+  /** Page being edited. Present on /admin/sider/[...slug]. */
+  initialSlug?: string
+  /** Section being shown. Present on /admin/[section]. */
+  initialView?: AdminSection
+  /** Opens the create-page dialog on arrival, for the /admin/sider/ny route. */
+  startCreatingPage?: boolean
+} = {}) {
+  const { pages, navigation, users, contactInfo, isAuthenticated, currentUser, supabaseReady, logout, createPage, updatePageDetails, deletePage, addBlock, removeBlock, moveBlock, updateBlockContent, updatePageMeta, updateNavItem, addNavItem, removeNavItem, updateNavigation, moveNavItemToParent, convertToDropdown, setNavLayout, orderingPersisted, addUser, updateUser, updateUserPassword, deleteUser, generatePassword, fetchUsers, updateContactInfo, cases, testimonials, companyLogos, addCase, updateCase, deleteCase, addTestimonial, updateTestimonial, deleteTestimonial, addCompanyLogo, updateCompanyLogo, deleteCompanyLogo } = useCMS()
   
   useEffect(() => {
     if (supabaseReady && users.length === 0) {
@@ -272,26 +400,17 @@ function Dashboard() {
   }, [supabaseReady])
   
   const router = useRouter()
-  const [selectedPage, setSelectedPage] = useState<string | null>(null)
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null)
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null)
-  const [draggingFromPanel, setDraggingFromPanel] = useState(false)
-  const [panelSelectedType, setPanelSelectedType] = useState<CMSBlock['type'] | null>(null)
+  const [selectedPage, setSelectedPage] = useState<string | null>(initialSlug ?? null)
+  const [blockDrop, setBlockDrop] = useState<{ overId: string; side: 'top' | 'bottom' } | null>(null)
   const [showComponentPicker, setShowComponentPicker] = useState(false)
   const [editingBlock, setEditingBlock] = useState<string | null>(null)
   const [showPreview, setShowPreview] = useState(true)
   const [previewRevision, setPreviewRevision] = useState(0)
   const blockEditRef = useRef<((fieldKey: string | null, url?: string) => void) | null>(null)
   const [editingMeta, setEditingMeta] = useState(false)
-  const [editingNavigation, setEditingNavigation] = useState(false)
   const [editingNavItem, setEditingNavItem] = useState<string | null>(null)
-  const [navDragIndex, setNavDragIndex] = useState<number | null>(null)
-  const [navDragOverIndex, setNavDragOverIndex] = useState<number | null>(null)
-  const [navDragOverParent, setNavDragOverParent] = useState<string | null>(null)
-  const [navDragOverItemId, setNavDragOverItemId] = useState<string | null>(null)
-  const [childDragParent, setChildDragParent] = useState<string | null>(null)
-  const [childDragIndex, setChildDragIndex] = useState<number | null>(null)
-  const [childDragOverIndex, setChildDragOverIndex] = useState<number | null>(null)
+  /** Outcome of the drag in progress, used to drive the row indicator. */
+  const [navDrop, setNavDrop] = useState<NavDropPlan>(NO_DROP)
   const [saved, setSaved] = useState(false)
   const [isReady, setIsReady] = useState(false)
   const [showCreatePage, setShowCreatePage] = useState(false)
@@ -308,13 +427,6 @@ function Dashboard() {
   const [newUserEmail, setNewUserEmail] = useState('')
   const [newUserPassword, setNewUserPassword] = useState('')
   const [createdUserInfo, setCreatedUserInfo] = useState<{email: string; password: string} | null>(null)
-  const [editingContactInfo, setEditingContactInfo] = useState(false)
-  const [pagesCollapsed, setPagesCollapsed] = useState(false)
-  const [editingCases, setEditingCases] = useState(false)
-  const [editingTestimonials, setEditingTestimonials] = useState(false)
-  const [editingCompanyLogos, setEditingCompanyLogos] = useState(false)
-  const [editingMediaLibrary, setEditingMediaLibrary] = useState(false)
-  const [editingHeaderFooter, setEditingHeaderFooter] = useState(false)
   const [editingCase, setEditingCase] = useState<string | null>(null)
   const [editingTestimonial, setEditingTestimonial] = useState<string | null>(null)
   const [editingLogo, setEditingLogo] = useState<string | null>(null)
@@ -395,12 +507,18 @@ function Dashboard() {
   })
 
   useEffect(() => {
+    // Wait for the session check to finish before deciding. `isAuthenticated` is
+    // derived from the signed-in user, so it reads false during the very first
+    // render of a hard load. Redirecting then bounced a signed-in visitor to
+    // /admin/login, which pushed straight back to /admin and quietly discarded
+    // whichever route they actually asked for.
+    if (!supabaseReady) return
     if (!isAuthenticated) {
       router.push('/admin/login')
     } else {
       setIsReady(true)
     }
-  }, [isAuthenticated, router])
+  }, [supabaseReady, isAuthenticated, router])
 
   // Derived above the auth gate because the hook below depends on it, and no
   // hook may sit after an early return.
@@ -412,6 +530,45 @@ function Dashboard() {
     if (!isAuthenticated || !isReady) return
     setPreviewRevision(r => r + 1)
   }, [currentPage?.blocks, isAuthenticated, isReady])
+
+  // Sensors are hooks, so they have to be created before the auth gate below.
+  // Declaring them after it made the hook count depend on authentication, which
+  // React reported as "Rendered more hooks than during the previous render".
+  const navSensors = useDndSensors()
+  const blockSensors = useDndSensors()
+  const [navActiveId, setNavActiveId] = useState<string | null>(null)
+  // A hook, so it has to sit above the auth gate with the rest of them. Placing
+  // it after made the hook count depend on authentication, which React reports
+  // as "Rendered more hooks than during the previous render".
+  //
+  // WordPress renders the menu as one flat indented list, so that is what the
+  // drag maths operates on: vertical position picks the row, horizontal offset
+  // picks the level.
+  const flatNav = useMemo(() => flattenNav(navigation), [navigation])
+
+  // The route owns which page is open, so navigating between them has to
+  // follow. A hook, so it sits with the rest above the auth gate.
+  useEffect(() => {
+    setSelectedPage(initialSlug ?? null)
+    setEditingBlock(null)
+    setEditingNavItem(null)
+  }, [initialSlug])
+
+  const createRequested = useRef(false)
+  useEffect(() => {
+    if (!startCreatingPage || createRequested.current) return
+    createRequested.current = true
+    setShowCreatePage(true)
+  }, [startCreatingPage])
+
+  const [view, setView] = useState<AdminSection>(initialView)
+  // The route owns which screen is shown, so client navigation has to follow.
+  useEffect(() => {
+    setView(initialView)
+  }, [initialView])
+
+  /** Section in view, plus a page editor when one is open. */
+  const activeView = initialSlug ? 'page' : view
 
   if (!isAuthenticated || !isReady) {
     return (
@@ -426,28 +583,115 @@ function Dashboard() {
     router.push('/')
   }
 
-  const handleDragStart = (index: number) => {
-    setDraggedIndex(index)
-    setDraggingFromPanel(false)
-  }
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault()
-    setDragOverIndex(index)
-  }
-
-  const handleDrop = (targetIndex: number) => {
-    if (draggedIndex !== null && draggedIndex !== targetIndex && selectedPage) {
-      moveBlock(selectedPage, draggedIndex, targetIndex)
+  /** Moving between sections is a navigation, so each one gets a URL. */
+  const goTo = (next: AdminSection) => {
+    setEditingNavItem(null)
+    setEditingBlock(null)
+    // Both contact screens edit the same record, so each arrival reloads the
+    // form rather than showing a stale copy left over from the other screen.
+    if (next === 'generelt' || next === 'header-footer') {
+      setContactForm({
+        ...contactInfo,
+        logo: contactInfo.logo || '',
+        favicon: contactInfo.favicon || '',
+        headerButtonText: contactInfo.headerButtonText || '',
+        footerDescription: contactInfo.footerDescription || '',
+        footerCol2Title: contactInfo.footerCol2Title || '',
+        footerCol3Title: contactInfo.footerCol3Title || '',
+        footerCol4Title: contactInfo.footerCol4Title || '',
+        footerCol2Links: contactInfo.footerCol2Links || [],
+        footerCol3Links: contactInfo.footerCol3Links || [],
+        footerCol4Links: contactInfo.footerCol4Links || [],
+      })
     }
-    setDraggedIndex(null)
-    setDragOverIndex(null)
+    router.push(sectionHref(next))
   }
 
-  const handlePanelDragStart = (type: CMSBlock['type']) => {
-    setDraggingFromPanel(true)
-    setDraggedIndex(-1)
-    setPanelSelectedType(type)
+  /**
+   * Flat list of menu rows, recomputed whenever the tree changes.
+   *
+   * WordPress renders the menu as a single indented list rather than a tree of
+   * nested panels, so that is what the drag maths operates on: vertical
+   * position picks the row, horizontal offset picks the depth.
+   */
+  /**
+   * Where a drag would land, or why it cannot.
+   *
+   * A parent's children sit directly beneath it, so a drag that travels over
+   * its own branch passes gaps that cannot be drop points. Reporting those as
+   * refusals turned most of the journey red and made the list feel broken, so
+   * they are skipped instead: the last legal indicator simply stays where it
+   * was, and the row only settles once the pointer reaches a real gap.
+   */
+  const planNavMove = (activeId: string, overId: string): NavDropPlan => {
+    const fromIndex = flatNav.findIndex(r => r.path === navPathOf(activeId))
+    const overIndex = flatNav.findIndex(r => r.path === navPathOf(overId))
+    if (fromIndex === -1 || overIndex === -1 || fromIndex === overIndex) {
+      return { kind: 'none' }
+    }
+
+    // The dragged row travels with everything under it, so a gap inside that
+    // block is the block's own interior rather than a candidate position.
+    const movingPath = flatNav[fromIndex].path
+    if (navPathOf(overId).startsWith(`${movingPath}.`)) return { kind: 'none' }
+
+    const side = resolveReorderSide(fromIndex, overIndex)
+    const result = resolveNavDrop({
+      flat: flatNav,
+      fromIndex,
+      insertAt: side === 'top' ? overIndex : overIndex + 1,
+    })
+    if (!result) return { kind: 'blocked', path: navPathOf(overId), side }
+
+    return { kind: 'move', path: navPathOf(overId), side, depth: result.depth }
+  }
+
+  const handleNavDragOver = (event: DragOverEvent) => {
+    const over = event.over
+    setNavDrop(over ? planNavMove(String(event.active.id), String(over.id)) : { kind: 'none' })
+  }
+
+  const handleNavDragEnd = (event: DragEndEvent) => {
+    setNavDrop({ kind: 'none' })
+    setNavActiveId(null)
+    const over = event.over
+    if (!over) return
+
+    const fromIndex = flatNav.findIndex(r => r.path === navPathOf(String(event.active.id)))
+    const overIndex = flatNav.findIndex(r => r.path === navPathOf(String(over.id)))
+    if (fromIndex === -1 || overIndex === -1 || fromIndex === overIndex) return
+
+    const result = resolveNavDrop({
+      flat: flatNav,
+      fromIndex,
+      insertAt: resolveReorderSide(fromIndex, overIndex) === 'top' ? overIndex : overIndex + 1,
+    })
+    if (!result) return
+
+    setNavLayout(rebuildNavTree(result.placements))
+  }
+
+
+
+  const handleBlockDragOver = ({ active, over }: DragOverEvent) => {
+    if (!over || !currentPage) {
+      setBlockDrop(null)
+      return
+    }
+    const target = resolveBlockDrop(active, over, currentPage.blocks)
+    setBlockDrop(target ? { overId: String(over.id), side: target.side } : null)
+  }
+
+  const handleBlockDragEnd = ({ active, over }: DragEndEvent) => {
+    // Any press that is currently armed was a drag, not a click.
+    disarmRowClick()
+    setBlockDrop(null)
+    if (!over || !selectedPage || !currentPage) return
+
+    const target = resolveBlockDrop(active, over, currentPage.blocks)
+    if (!target) return
+
+    moveBlock(selectedPage, target.from, target.to)
   }
 
   const getDefaultContent = (type: CMSBlock['type']): Record<string, any> => {
@@ -475,20 +719,6 @@ function Dashboard() {
     }
   }
 
-  const handlePanelDrop = (index?: number) => {
-    if (draggingFromPanel && selectedPage && panelSelectedType) {
-      const newBlock: CMSBlock = {
-        id: generateId(panelSelectedType),
-        type: panelSelectedType,
-        content: getDefaultContent(panelSelectedType)
-      }
-      addBlock(selectedPage, newBlock, index)
-    }
-    setDraggingFromPanel(false)
-    setDraggedIndex(null)
-    setPanelSelectedType(null)
-  }
-
   const addBlockFromPanel = (type: CMSBlock['type']) => {
     if (!selectedPage) return
     const newBlock: CMSBlock = {
@@ -501,7 +731,9 @@ function Dashboard() {
   }
 
   const handleSave = () => {
-    if (editingContactInfo || editingHeaderFooter) {
+    // Both settings screens edit the same contact record, so the save button
+    // acts on whichever one is showing rather than on a stored flag.
+    if (view === 'generelt' || view === 'header-footer') {
       updateContactInfo(contactForm)
     }
     setHasUnsavedChanges(false)
@@ -519,54 +751,8 @@ function Dashboard() {
     return blockTypes.find(b => b.type === type)?.label || type
   }
 
-  /**
-   * Single entry point for changing what the canvas shows.
-   *
-   * Previously each nav item set five of six booleans by hand, so the sections
-   * could drift out of sync. One function keeps them mutually exclusive.
-   */
-  const goTo = (
-    view: 'page' | 'navigation' | 'contact' | 'headerfooter' | 'cases' | 'testimonials' | 'logos' | 'media',
-    slug?: string
-  ) => {
-    setEditingNavigation(view === 'navigation')
-    setEditingContactInfo(view === 'contact')
-    setEditingHeaderFooter(view === 'headerfooter')
-    setEditingCases(view === 'cases')
-    setEditingTestimonials(view === 'testimonials')
-    setEditingCompanyLogos(view === 'logos')
-    setEditingMediaLibrary(view === 'media')
-    setEditingNavItem(null)
-    setEditingBlock(null)
-    setSelectedPage(view === 'page' ? slug ?? null : null)
-    if (view === 'contact' || view === 'headerfooter') {
-      setContactForm({
-        ...contactInfo,
-        logo: contactInfo.logo || '',
-        favicon: contactInfo.favicon || '',
-        headerButtonText: contactInfo.headerButtonText || '',
-        footerDescription: contactInfo.footerDescription || '',
-        footerCol2Title: contactInfo.footerCol2Title || '',
-        footerCol3Title: contactInfo.footerCol3Title || '',
-        footerCol4Title: contactInfo.footerCol4Title || '',
-        footerCol2Links: contactInfo.footerCol2Links || [],
-        footerCol3Links: contactInfo.footerCol3Links || [],
-        footerCol4Links: contactInfo.footerCol4Links || [],
-      })
-    }
-  }
-
-  /** Which section the canvas is currently showing, derived not stored. */
-  const activeView =
-    editingNavigation ? 'navigation'
-    : editingContactInfo ? 'contact'
-    : editingHeaderFooter ? 'headerfooter'
-    : editingCases ? 'cases'
-    : editingTestimonials ? 'testimonials'
-    : editingCompanyLogos ? 'logos'
-    : editingMediaLibrary ? 'media'
-    : selectedPage ? 'page'
-    : null
+  const openPage = (slug: string) =>
+    router.push(`/admin/sider/${slug.split('/').map(encodeURIComponent).join('/')}`)
 
   return (
     <div className="min-h-screen bg-[var(--canvas)] text-[var(--ink)]">
@@ -632,175 +818,33 @@ function Dashboard() {
       <div className="flex h-[calc(100vh-3.5rem)]">
         <aside className="hidden w-[13rem] shrink-0 flex-col overflow-y-auto border-r border-[var(--hairline)] bg-[var(--surface)] lg:flex">
           <div className="flex-1 space-y-6 px-3 py-4">
-            {/* Pages are the primary object, so they get the top of the rail. */}
-            <div>
-              <div className="flex items-center justify-between px-2 pb-2">
-                <p className="admin-eyebrow">Sider</p>
-                <IconButton
-                  label={pagesCollapsed ? 'Vis sider' : 'Skjul sider'}
-                  onClick={() => setPagesCollapsed(!pagesCollapsed)}
-                  className="h-5 w-5"
-                >
-                  <ChevronDown
-                    size={13}
-                    className={`transition-transform duration-150 ${pagesCollapsed ? '-rotate-90' : ''}`}
-                  />
-                </IconButton>
-              </div>
-
-              {!pagesCollapsed && (
-                <nav className="space-y-px">
-                  {(() => {
-                    const rootPages = pages.filter(p => !p.parentSlug).sort((a, b) => {
-                      if (a.slug === 'home') return -1
-                      if (b.slug === 'home') return 1
-                      if (a.slug === 'ydelser') return -1
-                      if (b.slug === 'ydelser') return 1
-                      return a.slug.localeCompare(b.slug)
-                    })
-
-                    const getChildren = (parentSlug: string) =>
-                      pages.filter(p => p.parentSlug === parentSlug).sort((a, b) => a.slug.localeCompare(b.slug))
-
-                    const renderPage = (page: typeof pages[0], depth: number = 0) => {
-                      const indent = depth === 0 ? 'pl-2' : depth === 1 ? 'pl-6' : 'pl-10'
-                      const isActive = activeView === 'page' && selectedPage === page.slug
-                      const parentExists = page.parentSlug ? pages.some(p => p.slug === page.parentSlug) : true
-                      const children = getChildren(page.slug)
-
-                      return (
-                        <div key={page.slug}>
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            onClick={() => goTo('page', page.slug)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault()
-                                goTo('page', page.slug)
-                              }
-                            }}
-                            className={`group flex cursor-pointer items-center justify-between gap-1 rounded-md py-1.5 pr-1 text-left transition-colors ${indent} ${
-                              isActive
-                                ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
-                                : 'text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]'
-                            }`}
-                          >
-                            <span className="flex min-w-0 items-center gap-1.5">
-                              {depth > 0 && (
-                                <span className="admin-num text-[9px] text-[var(--ink-3)]">
-                                  {depth === 1 ? '—' : '·'}
-                                </span>
-                              )}
-                              <span className="truncate text-[13px] font-medium">{page.title}</span>
-                              {!parentExists && (
-                                <span
-                                  className="shrink-0 text-[var(--danger)]"
-                                  title="Forældreside mangler"
-                                  aria-label="Forælderside mangler"
-                                >
-                                  <AlertTriangle size={12} />
-                                </span>
-                              )}
-                            </span>
-                            <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                              <IconButton
-                                label={`Rediger ${page.title}`}
-                                className="h-6 w-6"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  setEditingPageDetails({
-                                    slug: page.slug,
-                                    title: page.title,
-                                    pageSlug: page.slug.split('/').pop() || '',
-                                    parentSlug: page.parentSlug || '',
-                                  })
-                                }}
-                              >
-                                <Pencil size={12} />
-                              </IconButton>
-                              {page.slug !== 'home' && (
-                                <IconButton
-                                  label={`Slet ${page.title}`}
-                                  className="h-6 w-6 hover:text-[var(--danger)]"
-                                  onClick={e => {
-                                    e.stopPropagation()
-                                    setDeleteConfirm(page.slug)
-                                  }}
-                                >
-                                  <FileX size={12} />
-                                </IconButton>
-                              )}
-                            </span>
-                          </div>
-                          {children.map(child => renderPage(child, depth + 1))}
-                        </div>
-                      )
-                    }
-
-                    return rootPages.map(page => renderPage(page))
-                  })()}
-
-                  <button
-                    onClick={() => setShowCreatePage(true)}
-                    className="mt-1 flex w-full items-center gap-1.5 rounded-md py-1.5 pl-2 text-[13px] font-medium text-[var(--accent)] transition-colors hover:bg-[var(--accent-soft)]"
-                  >
-                    <Plus size={14} />
-                    Ny side
-                  </button>
-                </nav>
-              )}
-            </div>
-
             <RailGroup label="Indhold">
               <RailItem
-                icon={<Settings size={15} />}
-                label="Generelle oplysninger"
-                active={activeView === 'contact'}
-                onClick={() => goTo('contact')}
+                icon={<FileText size={15} />}
+                label="Sider"
+                active={activeView === 'page'}
+                onClick={() => router.push('/admin/sider')}
+                count={pages.length}
               />
-              <RailItem
-                icon={<PanelTop size={15} />}
-                label="Header / Footer"
-                active={activeView === 'headerfooter'}
-                onClick={() => goTo('headerfooter')}
-              />
-              <RailItem
-                icon={<Briefcase size={15} />}
-                label="Cases"
-                active={activeView === 'cases'}
-                onClick={() => goTo('cases')}
-                count={cases.length}
-              />
-              <RailItem
-                icon={<Quote size={15} />}
-                label="Kundeudtalelser"
-                active={activeView === 'testimonials'}
-                onClick={() => goTo('testimonials')}
-                count={testimonials.length}
-              />
-              <RailItem
-                icon={<Users size={15} />}
-                label="Firmalogoer"
-                active={activeView === 'logos'}
-                onClick={() => goTo('logos')}
-                count={companyLogos.length}
-              />
-              <RailItem
-                icon={<Folder size={15} />}
-                label="Mediebibliotek"
-                active={activeView === 'media'}
-                onClick={() => goTo('media')}
-              />
-            </RailGroup>
-
-            <RailGroup label="Navigation">
-              <RailItem
-                icon={<Menu size={15} />}
-                label="Rediger menu"
-                active={activeView === 'navigation'}
-                onClick={() => goTo('navigation')}
-              />
+              {/* Driven from the shared registry so a section can never appear
+                  in the rail without a URL, or the other way round. */}
+              {(Object.keys(ADMIN_SECTIONS) as AdminSection[])
+                .filter(s => s !== 'sider')
+                .map(s => (
+                  <RailItem
+                    key={s}
+                    icon={SECTION_ICONS[s]}
+                    label={ADMIN_SECTIONS[s].label}
+                    active={view === s}
+                    onClick={() => goTo(s)}
+                    count={
+                      s === 'cases' ? cases.length
+                      : s === 'anmeldelser' ? testimonials.length
+                      : s === 'logoer' ? companyLogos.length
+                      : undefined
+                    }
+                  />
+                ))}
             </RailGroup>
 
             <RailGroup label="Brugere">
@@ -826,7 +870,7 @@ function Dashboard() {
         </aside>
 
         <main className="flex-1 flex flex-col overflow-hidden">
-          {editingNavigation && (
+          {view === 'menu' && (
             <>
               <div className="flex items-center justify-between gap-4 border-b border-[var(--hairline)] bg-[var(--surface)] px-6 py-3.5">
                 <div>
@@ -835,12 +879,27 @@ function Dashboard() {
                     Hovedmenu
                   </h2>
                 </div>
-                <span className="text-[13px] text-[var(--ink-3)]">
-                  Træk for at ændre rækkefølgen
-                </span>
+                <p className="max-w-xs text-right text-[13px] leading-snug text-[var(--ink-3)]">
+                  Træk på grebet for at ændre rækkefølgen. Klik på
+                  &quot;+ Dropdown&quot; for at give et punkt underpunkter.
+                </p>
               </div>
 
               <div className="flex-1 overflow-y-auto px-6 py-6">
+                {!orderingPersisted && (
+                  <p
+                    className="mb-4 rounded-lg border border-[var(--danger)] bg-[var(--danger-soft)] px-3.5 py-2.5 text-[13px] leading-snug text-[var(--ink-2)]"
+                    role="status"
+                  >
+                    <strong className="font-medium text-[var(--danger)]">
+                      Rækkefølgen gemmes ikke.
+                    </strong>{' '}
+                    En ny rækkefølge virker, men forsvinder ved genindlæsning, fordi
+                    database-tabellerne mangler kolonnen <code>position</code>. Kør{' '}
+                    <code className="font-medium">supabase/migrations/001_add_position_columns.sql</code>{' '}
+                    i Supabase SQL Editor.
+                  </p>
+                )}
                 <div className="mx-auto max-w-2xl space-y-2">
                   {navigation.length === 0 && (
                     <EmptyState
@@ -856,211 +915,50 @@ function Dashboard() {
                     />
                   )}
                   
-                  {navigation.map((item, index) => {
-                    const isDropTarget = navDragIndex !== null && navDragIndex !== index && navDragOverIndex === index
-                    const isParentTarget = navDragOverParent === item.id
-                    
-                    return (
-                      <div key={item.id}>
-                        <div
-                          draggable={navDragIndex === null || navDragIndex !== index}
-                          onDragStart={() => setNavDragIndex(index)}
-                          onDragEnd={() => {
-                            setNavDragIndex(null)
-                            setNavDragOverIndex(null)
-                            setNavDragOverParent(null)
-                            setNavDragOverItemId(null)
-                          }}
-                          onDragOver={(e) => {
-                            e.preventDefault()
-                            if (navDragIndex !== null && navDragIndex !== index) {
-                              setNavDragOverIndex(index)
-                              if (item.type === 'link') {
-                                setNavDragOverItemId(item.id)
-                              }
-                            }
-                          }}
-                          onDrop={(e) => {
-                            e.preventDefault()
-                            if (navDragIndex !== null && navDragIndex !== index) {
-                              const draggedItem = navigation[navDragIndex]
-                              if (draggedItem && draggedItem.id !== item.id) {
-                                if (item.type === 'dropdown') {
-                                  moveNavItemToParent(draggedItem.id, item.id)
-                                } else {
-                                  convertToDropdown(item.id, draggedItem.id)
-                                }
-                              }
-                            }
-                            setNavDragIndex(null)
-                            setNavDragOverIndex(null)
-                            setNavDragOverItemId(null)
-                          }}
-                          className={cx(
-                            'rounded-lg border bg-[var(--surface)] p-3.5 transition-colors',
-                            isDropTarget && 'border-[var(--accent)] bg-[var(--accent-soft)]',
-                            navDragOverItemId === item.id &&
-                              'border-dashed border-[var(--accent)] bg-[var(--accent-soft)]',
-                            !isDropTarget &&
-                              navDragOverItemId !== item.id &&
-                              'border-[var(--hairline)] hover:border-[var(--hairline-strong)]',
-                            navDragIndex === index && 'opacity-50'
-                          )}
-                        >
-                          <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                              <GripVertical size={20} className="text-[var(--ink-3)] cursor-grab" />
-                              <div>
-                                <div className="font-medium text-[var(--ink)] flex items-center gap-2">
-                                  {item.label}
-                                  {item.type === 'dropdown' && (
-                                    <span className="text-xs bg-[var(--surface-hover)] px-2 py-0.5 rounded text-[var(--ink-2)]">
-                                      Dropdown
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-sm text-[var(--ink-2)]">
-                                  {item.pageSlug ? `Side: ${item.pageSlug}` : item.href || 'Ingen link'}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <button
-                                onClick={() => setEditingNavItem(item.id)}
-                                className="p-2 text-[var(--ink-3)] hover:text-[var(--accent)] hover:bg-[var(--surface-hover)] rounded-lg transition-colors"
-                                title="Rediger"
-                              >
-                                <Pencil size={18} />
-                              </button>
-                              {item.children && item.children.length > 0 && (
-                                <span className="text-xs text-[var(--ink-3)]">
-                                  {item.children.length} underpunkter
-                                </span>
-                              )}
-                              <button
-                                onClick={() => { setDeleteConfirm(item.id); setDeleteConfirmType('nav') }}
-                                className="p-2 text-[var(--ink-3)] hover:text-[var(--danger)] hover:bg-[var(--danger-soft)] rounded-lg transition-colors"
-                                title="Slet"
-                              >
-                                <Trash2 size={18} />
-                              </button>
-                            </div>
-                          </div>
-                          
-                          {item.children && item.children.length > 0 && (
-                            <div className="border-t border-[var(--hairline)] p-4 bg-[var(--surface-sunken)] mt-4"
-                              onDragOver={(e) => {
-                                e.preventDefault()
-                                if (navDragIndex !== null) {
-                                  setNavDragOverIndex(index)
-                                  setNavDragOverParent(item.id)
-                                }
-                              }}
-                              onDragLeave={() => {
-                                if (navDragOverParent === item.id) {
-                                  setNavDragOverParent(null)
-                                }
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault()
-                                if (navDragIndex !== null) {
-                                  const draggedItem = navigation[navDragIndex]
-                                  if (draggedItem && draggedItem.id !== item.id) {
-                                    moveNavItemToParent(draggedItem.id, item.id)
-                                  }
-                                }
-                                setNavDragIndex(null)
-                                setNavDragOverIndex(null)
-                                setNavDragOverParent(null)
-                              }}
-                            >
-                              <div className="flex items-center justify-between mb-2">
-                                <p className="text-xs text-[var(--ink-2)]">Underpunkter:</p>
-                                <button
-                                  onClick={() => {
-                                    addNavItem({
-                                      id: generateId('nav'),
-                                      label: 'Nyt underpunkt',
-                                      type: 'link',
-                                      href: '/ny-side'
-                                    }, item.id)
-                                  }}
-                                  className="text-xs text-[var(--accent)] hover:text-[var(--accent)]"
-                                >
-                                  + Tilføj underpunkt
-                                </button>
-                              </div>
-                              <div className="space-y-2">
-                                {item.children.map((child, childIndex) => (
-                                  <div
-                                    key={child.id}
-                                    draggable
-                                    onDragStart={() => {
-                                      setChildDragParent(item.id)
-                                      setChildDragIndex(childIndex)
-                                    }}
-                                    onDragEnd={() => {
-                                      setChildDragParent(null)
-                                      setChildDragIndex(null)
-                                      setChildDragOverIndex(null)
-                                    }}
-                                    onDragOver={(e) => {
-                                      e.preventDefault()
-                                      if (childDragParent === item.id && childDragIndex !== childIndex) {
-                                        setChildDragOverIndex(childIndex)
-                                      }
-                                    }}
-                                    onDrop={(e) => {
-                                      e.preventDefault()
-                                      if (childDragParent === item.id && childDragIndex !== null && childDragIndex !== childIndex) {
-                                        moveChildItem(item.id, childDragIndex, childIndex)
-                                      }
-                                      setChildDragParent(null)
-                                      setChildDragIndex(null)
-                                      setChildDragOverIndex(null)
-                                    }}
-                                    className={`flex items-center justify-between text-sm text-[var(--ink-2)] bg-white bg-[var(--surface)] p-2 rounded-lg transition-all cursor-grab ${
-                                      childDragParent === item.id && childDragIndex === childIndex ? 'opacity-50' : ''
-                                    } ${
-                                      childDragParent === item.id && childDragOverIndex === childIndex ? 'border-2 border-[var(--accent)]' : ''
-                                    }`}
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      <GripVertical size={14} className="text-[var(--ink-3)]" />
-                                      <div className="w-1.5 h-1.5 rounded-full bg-[var(--surface-hover)]" />
-                                      {child.label}
-                                    </div>
-                                    <div className="flex items-center gap-1">
-                                      <button
-                                        onClick={() => setEditingNavItem(child.id)}
-                                        className="p-1 text-[var(--ink-3)] hover:text-[var(--accent)] transition-colors"
-                                        title="Rediger"
-                                      >
-                                        <Pencil size={14} />
-                                      </button>
-                                      <button
-                                        onClick={() => moveNavItemToParent(child.id)}
-                                        className="p-1 text-[var(--ink-3)] hover:text-[var(--accent)] transition-colors"
-                                        title="Flyt til hovedmenu"
-                                      >
-                                        <ArrowLeft size={14} />
-                                      </button>
-                                      <button
-                                        onClick={() => removeNavItemFromParent(child.id)}
-                                        className="p-1 text-[var(--ink-3)] hover:text-[var(--danger)] transition-colors"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )
-                  })}
+                  <DndContext
+                    sensors={navSensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={({ active }) => setNavActiveId(navPathOf(String(active.id)))}
+                    onDragOver={handleNavDragOver}
+                    onDragEnd={handleNavDragEnd}
+                    onDragCancel={() => {
+                      setNavDrop(NO_DROP)
+                      setNavActiveId(null)
+                    }}
+                  >
+                    <SortableContext
+                      items={flatNav.map(r => navRowId(r.path))}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <SortableNavList
+                        flat={flatNav}
+                        drop={navDrop}
+                        draggedPath={navActiveId}
+                        onOpen={setEditingNavItem}
+                        onDelete={item => {
+                          setDeleteConfirm(item.id)
+                          setDeleteConfirmType('nav')
+                        }}
+                        onAddChild={parentId =>
+                          addNavItem(
+                            {
+                              id: generateId('nav'),
+                              label: 'Nyt underpunkt',
+                              type: 'link',
+                              href: '/ny-side',
+                            },
+                            parentId
+                          )
+                        }
+                        onPromote={id => moveNavItemToParent(id)}
+                        onMakeDropdown={item =>
+                          // Turns the link into a dropdown and adds a first
+                          // sub-item, so it is immediately usable and visible.
+                          convertToDropdown(item.id, generateId('nav'))
+                        }
+                      />
+                    </SortableContext>
+                  </DndContext>
                   
                   <button
                     onClick={() => setShowAddNavItem(true)}
@@ -1075,7 +973,7 @@ function Dashboard() {
           )}
 
 
-          {editingContactInfo && (
+          {view === 'generelt' && (
             <SectionShell eyebrow="Indhold" title="Generelle oplysninger" width="max-w-2xl">
               <div className="space-y-4">
                 <Panel className="p-5">
@@ -1163,7 +1061,7 @@ function Dashboard() {
             </SectionShell>
           )}
 
-          {editingHeaderFooter && (
+          {view === 'header-footer' && (
             <SectionShell eyebrow="Indhold" title="Header / Footer" width="max-w-2xl">
               <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface)] p-5">
                 <div className="space-y-6">
@@ -1411,7 +1309,7 @@ function Dashboard() {
             </SectionShell>
           )}
 
-          {editingCases && (
+          {view === 'cases' && (
             <SectionShell
               eyebrow="Indhold"
               title="Cases"
@@ -1500,7 +1398,7 @@ function Dashboard() {
             </SectionShell>
           )}
 
-          {editingTestimonials && (
+          {view === 'anmeldelser' && (
             <SectionShell
               eyebrow="Indhold"
               title="Kundeudtalelser"
@@ -1596,7 +1494,7 @@ function Dashboard() {
             </SectionShell>
           )}
 
-          {editingCompanyLogos && (
+          {view === 'logoer' && (
             <SectionShell
               eyebrow="Indhold"
               title="Firmalogoer"
@@ -1667,7 +1565,7 @@ function Dashboard() {
             </SectionShell>
           )}
 
-          {editingMediaLibrary && (
+          {view === 'mediebibliotek' && (
             <SectionShell eyebrow="Indhold" title="Mediebibliotek" width="max-w-6xl">
               <MediaLibrary />
             </SectionShell>
@@ -1736,121 +1634,68 @@ function Dashboard() {
                 >
                   <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
                 <div className="mx-auto max-w-3xl">
-                  <div className="admin-spine space-y-1.5">
-                    {currentPage.blocks.map((block, index) => {
-                      const isEditing = editingBlock === block.id
-                      const isDragOver = dragOverIndex === index
-                      const isDragging = draggedIndex === index
-                      const summary =
-                        block.content?.title ||
-                        block.content?.body?.slice?.(0, 60) ||
-                        block.content?.description?.slice?.(0, 60) ||
-                        'Uden titel'
-
-                      return (
-                        <div key={block.id} className="relative pl-9">
-                          {/* Drag handle sits on the spine. */}
-                          <span
-                            className="absolute left-0 top-1/2 flex h-7 w-7 -translate-y-1/2 cursor-grab items-center justify-center rounded-md text-[var(--ink-3)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink-2)] active:cursor-grabbing"
-                            title="Træk for at flytte"
-                            aria-hidden="true"
-                          >
-                            <GripVertical size={15} />
-                          </span>
-
-                          <div
-                            role="button"
-                            tabIndex={0}
-                            draggable
-                            onDragStart={() => handleDragStart(index)}
-                            onDragEnd={() => setDraggedIndex(null)}
-                            onDragOver={(e) => handleDragOver(e, index)}
-                            onDrop={() => handleDrop(index)}
-                            onClick={() => setEditingBlock(block.id)}
-                            onKeyDown={e => {
-                              if (e.key === 'Enter' || e.key === ' ') {
-                                e.preventDefault()
-                                setEditingBlock(block.id)
-                              }
-                            }}
-                            className={cx(
-                              'group flex cursor-pointer items-center gap-3 rounded-md border py-2.5 pl-3 pr-2 transition-colors',
-                              isDragOver && 'border-[var(--accent)] bg-[var(--accent-soft)]',
-                              isEditing && !isDragOver && 'border-[var(--accent-line)] bg-[var(--accent-soft)]',
-                              !isDragOver && !isEditing && 'border-transparent hover:border-[var(--hairline)] hover:bg-[var(--surface)]',
-                              isDragging && 'opacity-40'
-                            )}
-                          >
-                            <span className="admin-num w-5 shrink-0 text-right text-[11px] text-[var(--ink-3)]">
-                              {String(index + 1).padStart(2, '0')}
-                            </span>
-
-                            <span className="shrink-0 text-[var(--ink-3)] group-hover:text-[var(--ink-2)]">
-                              {getBlockIcon(block.type)}
-                            </span>
-
-                            <span className="min-w-0 flex-1">
-                              <span className="admin-eyebrow block">{getBlockLabel(block.type)}</span>
-                              <span className="mt-0.5 block truncate text-[13px] text-[var(--ink-2)]">
-                                {summary}
-                              </span>
-                            </span>
-
-                            <span className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
-                              <IconButton
-                                label={`Rediger ${getBlockLabel(block.type)}`}
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  setEditingBlock(block.id)
-                                }}
-                              >
-                                <Settings size={15} />
-                              </IconButton>
-                              <IconButton
-                                label={`Slet ${getBlockLabel(block.type)}`}
-                                className="hover:text-[var(--danger)]"
-                                onClick={e => {
-                                  e.stopPropagation()
-                                  setBlockDeleteConfirm({
-                                    pageSlug: currentPage.slug,
-                                    blockId: block.id,
-                                  })
-                                }}
-                              >
-                                <Trash2 size={15} />
-                              </IconButton>
-                            </span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-
-                  <div
-                    onDragOver={e => {
-                      e.preventDefault()
-                      setDragOverIndex(currentPage.blocks.length)
+                  {/* One DndContext spans the palette and the list, so a palette
+                      chip can be dropped at any gap in the block list. */}
+                  <DndContext
+                    sensors={blockSensors}
+                    collisionDetection={closestCenter}
+                    onDragStart={disarmRowClick}
+                    onDragOver={handleBlockDragOver}
+                    onDragEnd={handleBlockDragEnd}
+                    onDragCancel={() => {
+                      disarmRowClick()
+                      setBlockDrop(null)
                     }}
-                    onDrop={() => handleDrop(currentPage.blocks.length)}
-                    onClick={() => setShowComponentPicker(true)}
-                    className={cx(
-                      'mt-3 cursor-pointer rounded-lg border border-dashed px-4 py-6 text-center transition-colors',
-                      dragOverIndex === currentPage.blocks.length
-                        ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
-                        : 'border-[var(--hairline-strong)] hover:border-[var(--accent)] hover:bg-[var(--accent-soft)]'
-                    )}
                   >
-                    <Plus size={18} className="mx-auto mb-1.5 text-[var(--ink-3)]" />
-                    <p className="text-[13px] font-medium text-[var(--ink-2)]">
-                      {dragOverIndex === currentPage.blocks.length
-                        ? 'Slip for at tilføje'
-                        : 'Tilføj sektion'}
-                    </p>
-                  </div>
+                    <div className="admin-spine space-y-1.5">
+                      <BlockSortableList ids={currentPage.blocks.map(b => b.id)}>
+                        {currentPage.blocks.map((block, index) => (
+                          <SortableBlockRow
+                            key={block.id}
+                            id={block.id}
+                            index={index}
+                            total={currentPage.blocks.length}
+                            label={getBlockLabel(block.type)}
+                            summary={
+                              block.content?.title ||
+                              block.content?.body?.slice?.(0, 60) ||
+                              block.content?.description?.slice?.(0, 60) ||
+                              'Uden titel'
+                            }
+                            icon={getBlockIcon(block.type)}
+                            isEditing={editingBlock === block.id}
+                            dropSide={
+                              blockDrop?.overId === block.id ? blockDrop.side : null
+                            }
+                            onOpen={setEditingBlock}
+                            onDelete={blockId =>
+                              setBlockDeleteConfirm({
+                                pageSlug: currentPage.slug,
+                                blockId,
+                              })
+                            }
+                            onMove={(from, to) => moveBlock(currentPage.slug, from, to)}
+                          />
+                        ))}
+                      </BlockSortableList>
+                    </div>
+
+                    <ListEndZone
+                      isOver={blockDrop?.overId === 'list-end'}
+                      onClick={() => setShowComponentPicker(true)}
+                    >
+                      <Plus size={18} className="mx-auto mb-1.5 text-[var(--ink-3)]" />
+                      <p className="text-[13px] font-medium text-[var(--ink-2)]">
+                        {blockDrop?.overId === 'list-end'
+                          ? 'Slip for at flytte til sidst'
+                          : 'Tilføj sektion'}
+                      </p>
+                    </ListEndZone>
+                  </DndContext>
 
                   {currentPage.blocks.length === 0 && (
                     <p className="mt-3 text-center text-[13px] text-[var(--ink-3)]">
-                      Siden er tom. Tilføj en sektion for at komme i gang.
+                      Siden er tom. Klik på &quot;Tilføj sektion&quot; for at komme i gang.
                     </p>
                   )}
                   </div>
@@ -1990,7 +1835,7 @@ function Dashboard() {
                     if (page) {
                       // page.slug is cumulative (parent/child); the bare slug
                       // matched nothing when the page was created under a parent.
-                      goTo('page', page.slug)
+                      openPage(page.slug)
                     }
                     setShowCreatePage(false)
                     setNewPageTitle('')
@@ -2053,7 +1898,9 @@ function Dashboard() {
                   } else {
                     deletePage(deleteConfirm)
                     if (selectedPage === deleteConfirm) {
-                      goTo('page', pages.find(p => p.slug !== deleteConfirm)?.slug)
+                      // The open page is gone, so fall back to the library
+                      // rather than to whichever page happens to be next.
+                      router.push('/admin/sider')
                     }
                   }
                   setDeleteConfirm(null)
@@ -2132,7 +1979,7 @@ function Dashboard() {
           onSave={(oldSlug, title, newSlug, parentSlug) => {
             updatePageDetails(oldSlug, title, newSlug, parentSlug)
             if (selectedPage === oldSlug) {
-              goTo('page', newSlug)
+              openPage(newSlug)
             }
             setEditingPageDetails(null)
           }}
@@ -3769,109 +3616,156 @@ function MediaLibrary() {
     { id: 'document', label: 'Dokumenter', icon: FileText },
   ]
 
+  const uploadLabel = (label: string, className?: string) => (
+    <label
+      className={cx(
+        'inline-flex h-7 cursor-pointer items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-2.5 text-xs font-medium text-[var(--surface)] transition-opacity hover:opacity-90',
+        uploading && 'pointer-events-none opacity-60',
+        className
+      )}
+    >
+      {uploading ? (
+        <Loader2 size={14} className="animate-spin" />
+      ) : (
+        <Upload size={14} />
+      )}
+      {label}
+      <input
+        type="file"
+        className="sr-only"
+        multiple
+        accept="image/*,video/*,audio/*,.pdf"
+        onChange={handleUpload}
+        disabled={uploading}
+      />
+    </label>
+  )
+
   return (
-    <div className="space-y-6">
-      <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface)] p-4">
-        <div className="flex items-center justify-between gap-4 mb-4">
-          <div className="flex-1 max-w-md">
-            <input
-              type="text"
-              placeholder="Søg efter filer..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="admin-input"
-            />
-          </div>
-          <label className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-md bg-[var(--ink)] px-4 py-2 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90">
-            {uploading ? <Loader2 size={18} className="animate-spin" /> : <Upload size={18} />}
-            <span>{uploading ? 'Uploader...' : 'Upload filer'}</span>
-            <input
-              type="file"
-              className="hidden"
-              multiple
-              accept="image/*,video/*,audio/*,.pdf"
-              onChange={handleUpload}
-              disabled={uploading}
-            />
-          </label>
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-3">
+        <Input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Søg efter filer..."
+          aria-label="Søg efter filer"
+          className="max-w-xs"
+        />
+
+        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filtype">
+          {categories.map(cat => {
+            const active = filter === cat.id
+            return (
+              <button
+                key={cat.id}
+                type="button"
+                onClick={() => setFilter(cat.id)}
+                aria-pressed={active}
+                className={cx(
+                  'inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium transition-colors',
+                  active
+                    ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                    : 'text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]'
+                )}
+              >
+                <cat.icon size={14} />
+                {cat.label}
+              </button>
+            )
+          })}
         </div>
-        <div className="flex gap-2">
-          {categories.map(cat => (
-            <button
-              key={cat.id}
-              onClick={() => setFilter(cat.id)}
-              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm transition-colors ${
-                filter === cat.id
-                  ? 'bg-[var(--accent)] text-white'
-                  : 'bg-[var(--surface-hover)] text-[var(--ink-2)] hover:bg-[var(--surface-hover)] hover:bg-[var(--surface-hover)]'
-              }`}
-            >
-              <cat.icon size={14} />
-              {cat.label}
-            </button>
-          ))}
+
+        <div className="ml-auto flex items-center gap-3">
+          <span className="admin-num text-[11px] text-[var(--ink-3)]">
+            {displayedFiles.length}
+            {search ? ` af ${files.length}` : ''} filer
+          </span>
+          {uploadLabel(uploading ? 'Uploader…' : 'Upload filer')}
         </div>
       </div>
 
       {loading ? (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 size={32} className="animate-spin text-[var(--ink-3)]" />
+        <div className="flex items-center justify-center rounded-lg border border-[var(--hairline)] py-16">
+          <Loader2 size={22} className="animate-spin text-[var(--ink-3)]" />
         </div>
       ) : displayedFiles.length === 0 ? (
-        <div className="text-center py-12 bg-white bg-[var(--surface)] rounded-lg border border-[var(--hairline)]">
-          <Folder size={48} className="mx-auto mb-4 text-[var(--ink-3)]" />
-          <p className="text-[var(--ink-2)]">{search ? 'Ingen filer matcher din søgning' : 'Ingen filer endnu'}</p>
-          {!search && <p className="text-sm text-[var(--ink-3)] mt-1">Upload billeder, videoer, lyd eller dokumenter</p>}
-        </div>
+        <EmptyState
+          icon={<Folder size={22} />}
+          title={search ? 'Ingen filer matcher din søgning' : 'Ingen filer endnu'}
+          description={
+            search
+              ? 'Prøv et andet søgeord, eller ryd filteret.'
+              : 'Upload billeder, videoer, lyd eller dokumenter, så kan du bruge dem på sitet.'
+          }
+          action={search ? undefined : uploadLabel('Upload den første fil')}
+        />
       ) : (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           {displayedFiles.map((file, index) => (
             <div
               key={`${file.name}-${index}`}
-              className="group bg-white bg-[var(--surface)] rounded-lg border border-[var(--hairline)] overflow-hidden"
+              className="group relative overflow-hidden rounded-lg border border-[var(--hairline)] bg-[var(--surface)] transition-colors hover:border-[var(--hairline-strong)]"
             >
-              <div className="aspect-square flex items-center justify-center bg-[var(--surface-hover)] relative">
+              <div className="relative flex aspect-square items-center justify-center bg-[var(--surface-sunken)]">
                 {file.category === 'image' ? (
                   <img
                     src={file.url}
                     alt={file.name}
-                    className="w-full h-full object-cover"
+                    className="h-full w-full object-cover"
                   />
                 ) : (
-                  <div className="text-[var(--ink-3)]">
-                    {getFileIcon(file.category)}
-                  </div>
+                  <span className="text-[var(--ink-3)]">{getFileIcon(file.category)}</span>
                 )}
-                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                  <button
-                    onClick={() => copyToClipboard(file.url)}
-                    className="p-2 bg-white rounded-lg text-[var(--ink-2)] hover:bg-[var(--surface-hover)] transition-colors"
-                    title="Kopier URL"
-                  >
-                    {copiedUrl === file.url ? <Check size={16} /> : <Copy size={16} />}
-                  </button>
-                  <a
-                    href={file.url}
-                    target="_blank"
-                    className="p-2 bg-white rounded-lg text-[var(--ink-2)] hover:bg-[var(--surface-hover)] transition-colors"
-                    title="Åbn i ny fane"
-                  >
-                    <ExternalLink size={16} />
-                  </a>
-                  <button
-                    onClick={() => handleDelete(file.name)}
-                    className="p-2 bg-white rounded-lg text-[var(--danger)] hover:bg-[var(--danger-soft)] transition-colors"
-                    title="Slet"
-                  >
-                    <Trash2 size={16} />
-                  </button>
+
+                {/* Actions live on the thumbnail, matching the logo grid, so
+                    there's no full-bleed black overlay covering the preview. */}
+                <div className="absolute right-1 top-1 flex items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover:opacity-100">
+                  <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--surface)]/90 backdrop-blur">
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(file.url)}
+                      aria-label={`Kopiér URL for ${file.name}`}
+                      title="Kopiér URL"
+                      className="flex h-6 w-6 items-center justify-center rounded text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
+                    >
+                      {copiedUrl === file.url ? (
+                        <Check size={13} className="text-[var(--success)]" />
+                      ) : (
+                        <Copy size={13} />
+                      )}
+                    </button>
+                  </span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--surface)]/90 backdrop-blur">
+                    <a
+                      href={file.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      aria-label={`Åbn ${file.name} i ny fane`}
+                      title="Åbn i ny fane"
+                      className="flex h-6 w-6 items-center justify-center rounded text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
+                    >
+                      <ExternalLink size={13} />
+                    </a>
+                  </span>
+                  <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--surface)]/90 backdrop-blur">
+                    <button
+                      type="button"
+                      onClick={() => handleDelete(file.name)}
+                      aria-label={`Slet ${file.name}`}
+                      title="Slet"
+                      className="flex h-6 w-6 items-center justify-center rounded text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </span>
                 </div>
               </div>
-              <div className="p-3">
-                <p className="text-sm font-medium text-[var(--ink)] truncate" title={file.name}>
+
+              <div className="px-3 py-2.5">
+                <p className="truncate text-[13px] font-medium text-[var(--ink)]" title={file.name}>
                   {file.name}
                 </p>
-                <p className="text-xs text-[var(--ink-2)]">
+                <p className="admin-num mt-0.5 text-[10px] text-[var(--ink-3)]">
                   {formatSize(file.size)}
                 </p>
               </div>
@@ -4111,4 +4005,17 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
   )
 }
 
-export default Dashboard
+export default function AdminPage() {
+  const router = useRouter()
+  // Every section has a URL now, so there is nothing to render here. Sending
+  // people to a real address keeps the rail, the browser history and any
+  // shared link pointing at the same place.
+  useEffect(() => {
+    router.replace(`/admin/${DEFAULT_SECTION}`)
+  }, [router])
+  return (
+    <div className="flex min-h-screen items-center justify-center">
+      <div className="animate-pulse text-[var(--ink-2)]">Indlæser...</div>
+    </div>
+  )
+}

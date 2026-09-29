@@ -106,12 +106,24 @@ export async function loadCMSPages(): Promise<any[] | null> {
  * Ordering used to rely on `.order('id')` over ids like `nav-1712...`, so manual
  * reordering was lost on reload. A `position` column fixes that, but the column
  * has to be added to Supabase separately, so its availability is probed once and
- * cached. Until the migration is applied everything behaves exactly as before.
+ * cached.
+ *
+ * When the column is missing the fallback is `.order('id')`, which cannot
+ * represent a manual order. That is a silent data-loss path: a reorder saves
+ * with a 200 and then reverts on the next load. `isOrderingPersisted` lets the
+ * admin say so out loud instead of pretending the save worked.
+ *
+ * See supabase/migrations/001_add_position_columns.sql
  */
 const positionSupport: Record<string, boolean> = {}
 
 function supportsPosition(table: string): boolean {
   return positionSupport[table] === true
+}
+
+/** False once any table has been found to be missing its `position` column. */
+export function isOrderingPersisted(): boolean {
+  return Object.values(positionSupport).every(v => v === true)
 }
 
 /** Orders by `position` when available, otherwise falls back to `id`. */

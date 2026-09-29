@@ -1,7 +1,7 @@
 'use client'
 
 import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
-import { supabase, authHeaders, saveCMSPages, loadCMSPages, saveCMSNavigation, loadCMSNavigation, saveCMSContactInfo, loadCMSContactInfo, saveCMSCases, loadCMSCases, saveCMSTestimonials, loadCMSTestimonials, saveCMSCompanyLogos, loadCMSCompanyLogos, deleteCMSPages, deleteCMSNavigation, deleteCMSCase, deleteCMSTestimonial, deleteCMSCompanyLogo } from '@/lib/supabase'
+import { supabase, authHeaders, isOrderingPersisted, saveCMSPages, loadCMSPages, saveCMSNavigation, loadCMSNavigation, saveCMSContactInfo, loadCMSContactInfo, saveCMSCases, loadCMSCases, saveCMSTestimonials, loadCMSTestimonials, saveCMSCompanyLogos, loadCMSCompanyLogos, deleteCMSPages, deleteCMSNavigation, deleteCMSCase, deleteCMSTestimonial, deleteCMSCompanyLogo } from '@/lib/supabase'
 import type { User } from '@supabase/supabase-js'
 
 function generateId(prefix: string = 'id'): string {
@@ -154,9 +154,11 @@ interface CMSContextType {
   removeNavItemFromParent: (itemId: string) => void
   moveNavItem: (fromIndex: number, toIndex: number) => void
   moveNavItemToParent: (childId: string, newParentId?: string) => void
-  convertToDropdown: (parentId: string, childId: string) => void
-  moveChildItem: (parentId: string, fromIndex: number, toIndex: number) => void
-  updateNavItem: (itemId: string, updates: Partial<NavItem>) => void
+    convertToDropdown: (parentId: string, childId: string) => void
+    moveChildItem: (parentId: string, fromIndex: number, toIndex: number) => void
+    setNavLayout: (nav: NavItem[]) => void
+    orderingPersisted: boolean
+    updateNavItem: (itemId: string, updates: Partial<NavItem>) => void
   updateContactInfo: (info: Partial<ContactInfo>) => void
   addCase: (caseItem: Case) => void
   updateCase: (id: string, updates: Partial<Case>) => void
@@ -304,6 +306,24 @@ function migrateNavigation(nav: NavItem[]): NavItem[] {
     }
     return fixedItem
   })
+}
+
+/** Depth-first search for a nav item anywhere in the tree, not just the top two levels. */
+function findNavItemDeep(nav: NavItem[], id: string): NavItem | undefined {
+  for (const item of nav) {
+    if (item.id === id) return item
+    if (item.children) {
+      const hit = findNavItemDeep(item.children, id)
+      if (hit) return hit
+    }
+  }
+  return undefined
+}
+
+/** True when `ancestorId` is `item` or sits anywhere inside `item`'s subtree. */
+function navSubtreeContains(item: NavItem, id: string): boolean {
+  if (item.id === id) return true
+  return item.children ? item.children.some(child => navSubtreeContains(child, id)) : false
 }
 
 function fixNavigationHrefs(nav: NavItem[]): NavItem[] {
@@ -776,6 +796,26 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     })
   }
 
+  /**
+   * Applies a whole flat, depth-tagged menu layout in one write.
+   *
+   * Reordering and re-parenting happen together because they are the same
+   * operation once the tree is expressed as a depth-tagged list. Splitting them
+   * into separate mutations is what let a drag reorder a list while leaving the
+   * nesting stale.
+   */
+  const setNavLayout = (nav: NavItem[]) => {
+    saveCMSNavigation(nav)
+    setNavigation(nav)
+  }
+
+  /**
+   * False when the `position` column is missing, which means a manual reorder
+   * cannot survive a reload. Exposed so the admin can warn instead of letting
+   * the work disappear quietly.
+   */
+  const orderingPersisted = isOrderingPersisted()
+
   const moveNavItem = (fromIndex: number, toIndex: number) => {
     setNavigation(prev => {
       if (fromIndex < 0 || fromIndex >= prev.length) return prev
@@ -863,6 +903,15 @@ export function CMSProvider({ children }: { children: ReactNode }) {
 
   const moveNavItemToParent = (childId: string, newParentId?: string) => {
     setNavigation(prev => {
+      // Nesting an item inside its own subtree would detach that whole branch
+      // from the tree and drop it on the floor, so refuse before mutating.
+      if (newParentId) {
+        if (newParentId === childId) return prev
+        const child = findNavItemDeep(prev, childId)
+        if (child && navSubtreeContains(child, newParentId)) return prev
+        if (!findNavItemDeep(prev, newParentId)) return prev
+      }
+
       let child: NavItem | undefined
       let foundInTopLevel = false
       
@@ -870,44 +919,29 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       if (topLevelIndex !== -1) {
         child = prev[topLevelIndex]
         foundInTopLevel = true
+      } else {
+        child = findNavItemDeep(prev, childId)
       }
       
-      const withoutChild = prev.map(item => {
-        if (item.children?.some(c => c.id === childId)) {
-          if (!child) {
-            child = item.children?.find(c => c.id === childId)
-          }
-          const newChildren = item.children?.filter(c => c.id !== childId) || []
-          return {
-            ...item,
-            children: newChildren.length > 0 ? newChildren : undefined,
-            type: newChildren.length > 0 ? item.type : 'link' as const
-          }
-        }
-        if (item.children) {
-          const nestedParent = item.children.find(c => c.children?.some((gc: NavItem) => gc.id === childId))
-          if (nestedParent && nestedParent.children) {
-            if (!child) {
-              child = nestedParent.children.find((gc: NavItem) => gc.id === childId)
-            }
-            const newNestedChildren = nestedParent.children.filter((gc: NavItem) => gc.id !== childId)
-            return {
-              ...item,
-              children: item.children.map(c => {
-                if (c.id === nestedParent.id) {
-                  return {
-                    ...c,
-                    children: newNestedChildren.length > 0 ? newNestedChildren : undefined,
-                    type: newNestedChildren.length > 0 ? c.type : 'link' as const
-                  }
+      // Detach from wherever it currently lives, at any depth.
+      const detach = (items: NavItem[]): NavItem[] =>
+        items.reduce<NavItem[]>((acc, item) => {
+          if (item.id === childId) return acc
+          const keptChildren = item.children ? detach(item.children) : undefined
+          acc.push(
+            keptChildren
+              ? {
+                  ...item,
+                  children: keptChildren,
+                  // A parent left with no children is just a link again.
+                  type: keptChildren.length > 0 ? item.type : ('link' as const)
                 }
-                return c
-              })
-            }
-          }
-        }
-        return item
-      })
+              : item
+          )
+          return acc
+        }, [])
+
+      const withoutChild = detach(prev)
 
       if (!child) return prev
 
@@ -1285,6 +1319,8 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       moveNavItemToParent,
       moveChildItem,
       convertToDropdown,
+      setNavLayout,
+      orderingPersisted,
       updateNavItem,
       updateContactInfo,
       addCase,

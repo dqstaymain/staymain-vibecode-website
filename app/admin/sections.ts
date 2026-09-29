@@ -1,0 +1,28 @@
+/**
+ * The admin's sections, shared by the routes and the rail.
+ *
+ * Kept free of `'use client'` and of icons on purpose: the server route has to
+ * validate the URL segment, and a function that lives in a client module cannot
+ * be called from a server component. Icons stay behind in the rail.
+ */
+
+export const ADMIN_SECTIONS = {
+  sider: { label: 'Sider' },
+  generelt: { label: 'Generelle oplysninger' },
+  'header-footer': { label: 'Header / Footer' },
+  cases: { label: 'Cases' },
+  anmeldelser: { label: 'Kundeudtalelser' },
+  logoer: { label: 'Firmalogoer' },
+  mediebibliotek: { label: 'Mediebibliotek' },
+  menu: { label: 'Rediger menu' },
+} as const
+
+export type AdminSection = keyof typeof ADMIN_SECTIONS
+
+export const isAdminSection = (v: string): v is AdminSection =>
+  Object.prototype.hasOwnProperty.call(ADMIN_SECTIONS, v)
+
+/** Where `/admin` lands when opened directly. */
+export const DEFAULT_SECTION: AdminSection = 'sider'
+
+export const sectionHref = (s: AdminSection) => `/admin/${s}`

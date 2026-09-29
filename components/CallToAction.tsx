@@ -45,7 +45,7 @@ export default function CallToAction({ title, description }: { title: string; de
 
   return (
     <section className="relative">
-      <div ref={orb1Ref} className="absolute -top-20 -left-40 w-[600px] h-[600px] rounded-full blur-[150px] opacity-50 pointer-events-none" style={{ background: 'linear-gradient(135deg, #8b5cf6 0%, #6366f1 100%)' }} />
+      <div ref={orb1Ref} className="absolute -top-20 -left-40 w-[600px] h-[600px] rounded-full blur-[150px] opacity-50 pointer-events-none" style={{ background: 'linear-gradient(135deg, #2563eb 0%, #3b82f6 100%)' }} />
       <div ref={orb2Ref} className="absolute -bottom-40 -right-40 w-[700px] h-[700px] rounded-full blur-[180px] opacity-40 pointer-events-none" style={{ background: 'linear-gradient(135deg, #06b6d4 0%, #14b8a6 100%)' }} />
 
       <div className="py-20 sm:py-32 relative max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
