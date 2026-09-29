@@ -26,6 +26,21 @@ async function login(page: Page, path = '/admin/menu') {
   await expect(page.locator('aside').first()).toBeVisible({ timeout: 30_000 })
 }
 
+/**
+ * Asserts a page editor is really open, rather than the library behind it.
+ *
+ * These two used to assert the save control, which is only rendered when there
+ * are unsaved changes. On a freshly loaded page that is deliberately absent, so
+ * the assertion described a control the design intends not to show. "Did the
+ * click navigate to the editor" is the actual question, and the hero plus the
+ * block outline is what answers it.
+ */
+async function expectEditorOpen(page: Page) {
+  await expect(page.locator('aside').first()).toBeVisible()
+  await expect(page.getByRole('button', { name: /^Rediger hero$/ }).first()).toBeVisible()
+  await expect(page.locator('[data-block-row]').first()).toBeVisible()
+}
+
 test.describe('sider', () => {
   test('the rail has no pages dropdown', async ({ page }) => {
     await login(page)
@@ -96,9 +111,7 @@ test.describe('sider', () => {
     await first.click()
     await page.waitForURL(`**${href}`, { timeout: 15_000 })
 
-    // The editor is the workspace: the rail and the save control are present.
-    await expect(page.locator('aside').first()).toBeVisible()
-    await expect(page.getByRole('button', { name: /Gem/ })).toBeVisible()
+    await expectEditorOpen(page)
   })
 
   testAuth('a page URL loads that page directly', async ({ page }) => {
@@ -110,7 +123,38 @@ test.describe('sider', () => {
     // A cold load, not a client-side navigation, so the route really resolves.
     await page.goto(href!)
     await expect(page.locator('aside').first()).toBeVisible({ timeout: 20_000 })
-    await expect(page.getByRole('button', { name: /Gem/ })).toBeVisible()
+    await expectEditorOpen(page)
+  })
+
+  /**
+   * The save control appears only once there is something to save.
+   *
+   * It used to be asserted as permanently visible, which both contradicted the
+   * intended design and could only have passed by accident, off a draft left
+   * over from an earlier test. Both halves matter: no control on a clean page,
+   * a control as soon as an edit is made.
+   */
+  testAuth('the save control appears only once the page has unsaved changes', async ({
+    page,
+  }) => {
+    await login(page)
+    await page.goto('/admin/sider/home')
+    await expectEditorOpen(page)
+
+    await expect(page.getByRole('button', { name: /Gem/ })).toHaveCount(0)
+
+    await page.locator('[data-block-row]').first().locator('[role="button"]').first().click()
+    const editor = page.getByRole('dialog').last()
+    await expect(editor).toBeVisible({ timeout: 20_000 })
+
+    // The section title, addressed by role rather than by markup: a selector
+    // like input[type="text"] silently matches nothing when a component stops
+    // emitting the type attribute, which is a green test that tested nothing.
+    const title = editor.getByRole('textbox', { name: /Overskrift|^$/ }).first()
+    await title.fill('Endret af en test')
+    await editor.getByRole('button', { name: /Anvend/ }).first().click()
+
+    await expect(page.getByRole('button', { name: /Gem/ })).toBeVisible({ timeout: 20_000 })
   })
 })
 

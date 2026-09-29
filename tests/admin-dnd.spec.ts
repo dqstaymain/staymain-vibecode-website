@@ -82,6 +82,47 @@ async function grabAndMoveTo(page: Page, fromIndex: number, toIndex: number) {
   return true
 }
 
+/**
+ * Presses save and waits for it to land.
+ *
+ * The control is rendered only while there are unsaved changes, so it does not
+ * linger showing "Gemt" - on a successful save it unmounts entirely. Its
+ * disappearance is the completion signal, and it is also the failure signal: a
+ * rejected save leaves `hasUnsavedChanges` true, so the button stays put.
+ */
+async function commitAndWaitForSave(page: Page) {
+  const save = page.getByRole('button', { name: /Gem ændringer/ })
+  await expect(save).toBeVisible({ timeout: 20_000 })
+  await save.click()
+  await expect(save).toHaveCount(0, { timeout: 20_000 })
+}
+
+/**
+ * Puts the menu back the way it was found.
+ *
+ * The reorder tests commit a real order to the live menu, so a suite that leaves
+ * the navigation shuffled is a suite nobody can run twice. Only the single move
+ * these tests make is undone - the last row goes back to the top - which is
+ * enough for both tests and is far less fragile than reconstructing an order
+ * from labels.
+ */
+async function restoreOrder(page: Page, original: string[]) {
+  const current = await depths(page)
+  if (current.join() === original.join()) return
+
+  const count = current.length
+  if (count < 2) return
+
+  await grabAndMoveTo(page, count - 1, 0)
+  await page.mouse.up()
+  await page.waitForTimeout(600)
+
+  if ((await depths(page)).join() === original.join()) {
+    const save = page.getByRole('button', { name: /Gem ændringer/ })
+    if (await save.count()) await commitAndWaitForSave(page)
+  }
+}
+
 /** Which rows are showing a drop indicator, and whether it is a refusal. */
 const dropMarkers = (page: Page) =>
   rows(page).evaluateAll(els =>
@@ -213,21 +254,34 @@ test.describe('admin drag and drop', () => {
     const count = await rows(page).count()
     if (count < 2) test.skip(true, 'needs at least two rows')
 
-    await grabAndMoveTo(page, 0, count - 1)
-    await page.mouse.up()
-    await page.waitForTimeout(1200)
-    const after = await depths(page)
+    const original = await depths(page)
 
-    await page.reload()
-    // The reload lands on /admin/menu, so the rows come back on their own.
-    await expect(rows(page).first()).toBeVisible({ timeout: 20_000 })
-    const reloaded = await depths(page)
+    try {
+      await grabAndMoveTo(page, 0, count - 1)
+      await page.mouse.up()
+      await page.waitForTimeout(1200)
+      const after = await depths(page)
+      expect(after.join(), 'the order actually changed').not.toBe(original.join())
 
-    // Requires supabase/migrations/001_add_position_columns.sql. Without the
-    // position column the loader falls back to id order and this reverts.
-    expect(
-      reloaded.join(),
-      'order reverted: the position column is missing, so the save is lost'
-    ).toBe(after.join())
+      // The save has to be pressed. Nothing writes through on its own - the
+      // draft effect only touches localStorage, so a reorder that is not saved
+      // is *expected* to revert, and asserting otherwise tested nothing.
+      // Requires supabase/migrations/001_add_position_columns.sql: without the
+      // position column the loader falls back to id order.
+      await commitAndWaitForSave(page)
+
+      await page.reload()
+      // The reload lands on /admin/menu, so the rows come back on their own.
+      await expect(rows(page).first()).toBeVisible({ timeout: 20_000 })
+      const reloaded = await depths(page)
+
+      expect(
+        reloaded.join(),
+        'order reverted after saving: the position column is missing, so the save is lost'
+      ).toBe(after.join())
+    } finally {
+      // This test commits a real reorder to the live menu, so put it back.
+      await restoreOrder(page, original)
+    }
   })
 })

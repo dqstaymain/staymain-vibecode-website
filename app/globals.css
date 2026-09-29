@@ -327,6 +327,253 @@ h1, h2 {
   @apply border-slate-300;
 }
 
+/* ==========================================================================
+   Section system
+   --------------------------------------------------------------------------
+   Every non-hero block is a `section` with one of three tones. The tones are
+   the page's rhythm: consecutive sections alternate light / muted so a long
+   page reads as bands rather than one undifferentiated white column, and dark
+   is reserved for the moments that should land - stats, the closing call to
+   action.
+
+   They were hand-rolled per block before, and drifted: the services grid used
+   #F8FAFC, the gallery used slate-100, the testimonial card used white on
+   white, and every one of them invented its own vertical padding between py-8
+   and py-32. Two adjacent sections could not be relied on to differ.
+   ========================================================================== */
+
+.blk {
+  position: relative;
+  padding-block: 4.5rem;
+}
+
+@media (min-width: 768px) {
+  .blk { padding-block: 6.5rem; }
+}
+
+@media (min-width: 1280px) {
+  .blk { padding-block: 7.5rem; }
+}
+
+/* Tight band, for sections that follow a headline directly. */
+.blk--tight { padding-block: 3.5rem; }
+@media (min-width: 768px) { .blk--tight { padding-block: 5rem; } }
+
+/* No vertical padding at all - the band itself provides the separation. */
+.blk--flush { padding-block: 0; }
+
+.blk--light { background: #ffffff; }
+.blk--muted { background: #f7f7f6; border-block: 1px solid #ececea; }
+.blk--dark { background: #0a0a0b; color: #fafafa; }
+
+/* Dark bands stay flat. A blue wash on near-black reads as a smudge at this
+   scale; the hero keeps its own aurora, sections do not. */
+.blk--dark::before { content: none; }
+
+/* Content must sit above any decorative layer. */
+.blk > * { position: relative; z-index: 1; }
+
+.dark .blk--light { background: #0b0d10; color: #f1f4f8; }
+.dark .blk--muted { background: #101317; border-block-color: rgba(148, 163, 184, 0.16); color: #f1f4f8; }
+.dark .blk--dark { background: #050506; color: #fafafa; }
+
+.blk__inner {
+  width: 100%;
+  max-width: 68rem;
+  margin-inline: auto;
+  padding-inline: 1.25rem;
+}
+
+@media (min-width: 768px) { .blk__inner { padding-inline: 2rem; } }
+@media (min-width: 1280px) { .blk__inner { padding-inline: 2rem; } }
+
+/* Narrow measure for sections that are one idea, not a spread. */
+.blk__inner--narrow { max-width: 44rem; }
+
+/* --- Section header ------------------------------------------------------
+   An eyebrow over a serif heading over an optional lede. The eyebrow is the
+   small all-caps line the references use to label a band before its heading
+   arrives, and it does real work here: it lets two adjacent sections share a
+   heading style without reading as duplicates. */
+
+.blk-head { max-width: 44rem; }
+.blk-head--center { margin-inline: auto; text-align: center; }
+
+.blk-eyebrow {
+  display: block;
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: #6b7280;
+  margin-bottom: 0.9rem;
+}
+
+.blk--dark .blk-eyebrow { color: rgba(250, 250, 250, 0.6); }
+
+/* Block headings are sans by deliberate exception. The global rule pins h2 to
+   the serif, which suits the brand voice in prose but fights the minimal,
+   product-like section rhythm here; the `!important` below only touches
+   `.blk-title`, so the hero and everything outside `section.blk` is unchanged. */
+.blk-title {
+  font-family: 'DM Sans', system-ui, -apple-system, sans-serif !important;
+  font-weight: 600 !important;
+  font-size: clamp(1.875rem, 1.25rem + 2vw, 2.75rem);
+  line-height: 1.12;
+  letter-spacing: -0.022em;
+  text-wrap: balance;
+  margin-bottom: 1.1rem;
+  color: inherit;
+}
+
+.blk-lede {
+  font-size: 1.0625rem;
+  line-height: 1.65;
+  color: #52525b;
+  max-width: 36rem;
+  text-wrap: pretty;
+}
+
+.blk-head--center .blk-lede { margin-inline: auto; }
+.blk--dark .blk-lede { color: rgba(250, 250, 250, 0.68); }
+
+/* --- Body text ----------------------------------------------------------- */
+
+.blk-prose { font-size: 1.0625rem; line-height: 1.7; color: #3f3f46; text-wrap: pretty; }
+.blk--dark .blk-prose { color: rgba(250, 250, 250, 0.72); }
+
+.dark .blk-eyebrow { color: #9aa3af; }
+.dark .blk--dark .blk-eyebrow { color: rgba(250, 250, 250, 0.6); }
+.dark .blk-lede { color: #b6bcc5; }
+.dark .blk-prose { color: #c3c9d2; }
+
+/* Paragraphs are split on blank lines by the renderer, so a single textarea
+   can hold several without the editor growing a rich-text dependency. */
+.blk-prose p + p { margin-top: 1.25rem; }
+
+/* --- Rules ---------------------------------------------------------------
+   A hairline between repeated items, in the spirit of the references' thin
+   dividers. Preferred to card shadows: a shadow on every tile is what makes a
+   grid look like a pile of boxes rather than one composed section. */
+
+.blk-rule {
+  border-top: 1px solid var(--blk-rule, #e7e7e4);
+}
+
+.blk--dark .blk-rule { --blk-rule: rgba(250, 250, 250, 0.14); }
+
+.dark .blk-rule { --blk-rule: rgba(148, 163, 184, 0.22); }
+
+/* Quiet cards for capability grids and quotes: a 4% tint, a hairline, a small
+   radius. No shadows, no lift — the grid, not the tile, carries the section. */
+.blk-card {
+  background: #f8f8f7;
+  border: 1px solid #e8e8e6;
+  border-radius: 10px;
+}
+
+.blk--dark .blk-card { background: rgba(250, 250, 250, 0.04); border-color: rgba(250, 250, 250, 0.12); }
+.dark .blk-card { background: rgba(148, 163, 184, 0.08); border-color: rgba(148, 163, 184, 0.2); }
+
+/* --- Buttons -------------------------------------------------------------
+   One pair for the whole site. `globals.css` already defined pill buttons for
+   the hero, but the block components each hand-rolled a `rounded-lg` variant,
+   so the same call to action looked like a different product depending on which
+   section it sat in. These are the two the references pair together: a filled
+   primary and a ghost outline. */
+
+.blk-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 0.75rem 1.6rem;
+  border-radius: 2.5rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+/* Monochrome primary, Codex-style. Brand blue stays reserved for links, icons
+   under restraint, and the hero — sections convert with quiet pills. */
+.blk-btn--primary {
+  background: #111214;
+  color: #fff;
+}
+.blk-btn--primary:hover { background: #000000; }
+
+.blk-btn--ghost {
+  border: 1px solid #d8d8d5;
+  color: #18181b;
+  background: transparent;
+}
+.blk-btn--ghost:hover { border-color: #18181b; }
+
+.blk--dark .blk-btn--primary { background: #fafafa; color: #0a0a0b; }
+.blk--dark .blk-btn--primary:hover { background: #ffffff; }
+.blk--dark .blk-btn--ghost { color: #fafafa; border-color: rgba(250, 250, 250, 0.28); }
+.blk--dark .blk-btn--ghost:hover { border-color: #fafafa; }
+
+.dark .blk-btn--primary { background: #f4f4f5; color: #0a0a0b; }
+.dark .blk-btn--ghost { border-color: rgba(148, 163, 184, 0.35); color: #f1f4f8; }
+
+.blk-btn--sm { padding: 0.625rem 1.25rem; font-size: 0.875rem; }
+
+/* A link that looks like text, for tertiary actions inside a section. */
+.blk-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--brand-600);
+  border-bottom: 1px solid transparent;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+.blk-link:hover { border-bottom-color: currentColor; }
+.blk--dark .blk-link { color: var(--brand-300); }
+
+/* --- Media --------------------------------------------------------------- */
+
+.blk-media {
+  position: relative;
+  overflow: hidden;
+  background: #f1f2f3;
+  border: 1px solid #e8e8e6;
+  border-radius: 12px;
+}
+.blk--dark .blk-media { background: rgba(250, 250, 250, 0.05); border-color: rgba(250, 250, 250, 0.12); }
+.dark .blk-media { border-color: rgba(148, 163, 184, 0.22); }
+
+.blk-media img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.blk-media--portrait { aspect-ratio: 4 / 5; }
+.blk-media--landscape { aspect-ratio: 4 / 3; }
+.blk-media--square { aspect-ratio: 1 / 1; }
+.blk-media--wide { aspect-ratio: 16 / 10; }
+
+/* --- Reveal --------------------------------------------------------------
+   Sections fade up once on entry. Honouring reduced-motion is not optional
+   here: without it, the content is simply invisible for anyone who has the
+   preference set, because `.reveal` starts at opacity 0. */
+
+.reveal {
+  opacity: 0;
+  transform: translateY(16px);
+  transition: opacity 0.6s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.6s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.reveal.is-in { opacity: 1; transform: none; }
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal { opacity: 1; transform: none; transition: none; }
+}
+
 .nav-link {
   position: relative;
 }

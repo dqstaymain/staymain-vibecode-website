@@ -7,7 +7,7 @@
         "build": "next build",
         "start": "next start",
         "test:e2e": "playwright test",
-        "test:nav": "tsx scripts/test-nav-tree.ts && tsx scripts/check-dnd-wiring.ts && tsx scripts/check-admin-inputs.ts && tsx scripts/check-explicit-save.ts && tsx scripts/check-hooks-order.ts && tsx scripts/test-sitemap.ts && tsx scripts/test-page-list.ts",
+        "test:nav": "tsx scripts/test-nav-tree.ts && tsx scripts/check-dnd-wiring.ts && tsx scripts/check-admin-inputs.ts && tsx scripts/check-explicit-save.ts && tsx scripts/check-media-upload.ts && tsx scripts/check-block-registry.ts && tsx scripts/check-hooks-order.ts && tsx scripts/test-sitemap.ts && tsx scripts/test-page-list.ts",
         "test": "npm run test:nav"
     },
     "dependencies": {

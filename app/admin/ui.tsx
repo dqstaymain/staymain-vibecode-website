@@ -111,8 +111,13 @@ export function Field({
   )
 }
 
-export function Input({ className, ...props }: InputHTMLAttributes<HTMLInputElement>) {
-  return <input className={cx('admin-input', className)} {...props} />
+export function Input({ className, type, ...props }: InputHTMLAttributes<HTMLInputElement>) {
+  // type defaults explicitly rather than relying on the HTML default. A bare
+  // <input> is a text input to the browser but has no `type` attribute, so
+  // `input[type="text"]` does not match it - which quietly broke a selector that
+  // had been finding these fields all along. Spread last, so a caller can still
+  // pass type="email" or type="number".
+  return <input type={type ?? 'text'} className={cx('admin-input', className)} {...props} />
 }
 
 export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTextAreaElement>) {

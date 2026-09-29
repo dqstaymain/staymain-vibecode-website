@@ -73,6 +73,9 @@ export function SortableBlockRow({
     <div
       ref={setNodeRef}
       style={{ transform: sortTransform(transform), transition }}
+      // Same reasoning as data-nav-row on the nav rows: gives a test a stable
+      // handle on a block row without matching on its Danish label.
+      data-block-row={id}
       className={cx('relative pl-9', isDragging && 'z-30 opacity-40')}
     >
       <InsertionLine show={dropSide === 'top'} side="top" />

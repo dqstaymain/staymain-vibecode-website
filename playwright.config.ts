@@ -29,7 +29,11 @@ export default defineConfig({
     // miserable thing to debug and says nothing about the shipped behaviour.
     command: 'npm run build && npm run start',
     url: 'http://localhost:3000',
-    reuseExistingServer: true,
+    // Never reuse a running server. Reusing one silently tests whatever it was
+    // serving, which means a source fix can look like it did nothing - and an
+    // edit to a data-attribute or aria-label will not reach the tests at all.
+    // The build is a few seconds; a green run against stale code is worthless.
+    reuseExistingServer: false,
     timeout: 180_000,
   },
 })

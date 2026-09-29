@@ -31,6 +31,28 @@ export default async function globalSetup(_config: FullConfig) {
     // nothing races the session restore on the first real navigation.
     await page.waitForLoadState('networkidle')
 
+    // The Supabase client persists the session under an `sb-<ref>-auth-token`
+    // localStorage key. Capturing state without it writes a file that looks
+    // valid but authenticates nothing: every spec then loads the admin, gets
+    // redirected client-side to /admin/login, and - because the admin shell
+    // paints first - assertions can pass against a page the user is about to be
+    // thrown off. That is a test that reports success while testing nothing.
+    //
+    // Polled rather than read once, because the token is written on the auth
+    // response, which can land after `networkidle` has already fired.
+    try {
+      await page.waitForFunction(
+        () => Object.keys(window.localStorage).some(k => k.includes('auth-token')),
+        undefined,
+        { timeout: 15_000 }
+      )
+    } catch {
+      throw new Error(
+        'Signed in but no Supabase session was persisted to localStorage, so the ' +
+          'saved storage state would not authenticate. Refusing to write one.'
+      )
+    }
+
     await context.storageState({ path: STORAGE_STATE })
     console.log('Signed in; session saved for reuse.')
   } finally {

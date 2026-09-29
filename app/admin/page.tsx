@@ -49,10 +49,11 @@ import {
   LayoutDashboard,
   Home,
   // Aliased: `Lock` on its own resolves to the global Navigator Lock API.
-  Lock as LockIcon
+  Lock as LockIcon,
+  AlertCircle
 } from 'lucide-react'
 import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo, ContactInfo } from '@/lib/cms'
-import { uploadImage, authHeaders } from '@/lib/supabase'
+import { uploadImage, authHeaders, uploadMediaFile, deleteMediaFiles } from '@/lib/supabase'
 import {
   DndContext,
   closestCenter,
@@ -123,6 +124,8 @@ import {
   cx,
 } from './ui'
 import { PagePreview } from './page-preview'
+import { BlockFieldEditor } from './block-field-editor'
+import { ADDABLE_BLOCK_TYPES, getBlockDefinition } from '@/lib/blocks'
 
 function generateId(prefix: string = 'id'): string {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`
@@ -435,19 +438,31 @@ function SaveChanges({
 /**
  * The sections that can be added to a page.
  *
- * Hero is not in the list: every page has one, pinned above these, so offering it
- * here would let somebody put a second one on a page.
+ * The list itself now lives in lib/blocks.ts, next to each block's fields and
+ * defaults, so the picker, the outline row and the editor cannot disagree about
+ * what a block is called. Only the icon components are resolved here, because
+ * they are React and the registry is plain data.
+ *
+ * Hero is excluded: every page has one, pinned above these, so offering it here
+ * would let somebody put a second one on a page.
  */
-const blockTypes = [
-  { type: 'text', label: 'Tekst', icon: Type, description: 'Titel og tekstafsnit' },
-  { type: 'contentImage', label: 'Indhold + Billede', icon: ImageIcon, description: '2 kolonner med tekst og billede' },
-  { type: 'services', label: 'Services', icon: Settings, description: 'Vis ydelser i grid' },
-  { type: 'testimonials', label: 'Anmeldelser', icon: MessageSquare, description: 'Kundeudtalelser slider' },
-  { type: 'stats', label: 'Statistik', icon: BarChart3, description: 'Tal og statistik' },
-  { type: 'gallery', label: 'Galleri', icon: Image, description: 'Billedgalleri' },
-  { type: 'cta', label: 'CTA', icon: Megaphone, description: 'Call to action sektion' },
-  { type: 'contact', label: 'Kontakt', icon: FileText, description: 'Kontaktformular' },
-]
+const BLOCK_ICON_MAP: Record<string, React.ElementType> = {
+  type: Type,
+  image: ImageIcon,
+  settings: Settings,
+  'message-square': MessageSquare,
+  'bar-chart': BarChart3,
+  megaphone: Megaphone,
+  'file-text': FileText,
+  'panel-top': Layout,
+}
+
+const blockTypes = ADDABLE_BLOCK_TYPES.map(def => ({
+  type: def.type,
+  label: def.label,
+  description: def.description,
+  icon: BLOCK_ICON_MAP[def.icon] ?? Layout,
+}))
 
 /**
  * Outcome of a menu drag: a legal landing gap, an explicitly refused one, or
@@ -617,25 +632,11 @@ export function AdminWorkspace({
   const [blockDeleteConfirm, setBlockDeleteConfirm] = useState<{ pageSlug: string; blockId: string } | null>(null)
 
   const uploadToMediaLibrary = async (file: File): Promise<string | null> => {
-    const formData = new FormData()
-    formData.append('file', file)
     try {
-      const res = await fetch('/api/media', {
-        method: 'POST',
-        headers: await authHeaders(),
-        body: formData,
-      })
-      const data = await res.json()
-      // Without res.ok a 400/500 was indistinguishable from success, so
-      // rejected uploads silently did nothing.
-      if (!res.ok) {
-        alert(data.error || 'Uploaden mislykkedes')
-        return null
-      }
-      return data.file?.url || null
+      return (await uploadMediaFile(file)).url
     } catch (error) {
       console.error('Upload error:', error)
-      alert('Uploaden mislykkedes')
+      alert(error instanceof Error ? error.message : 'Uploaden mislykkedes')
       return null
     }
   }
@@ -859,29 +860,18 @@ export function AdminWorkspace({
     moveBlock(selectedPage, target.from + 1, target.to + 1)
   }
 
+  /**
+   * The content a newly added block starts with.
+   *
+   * Lives in lib/blocks.ts so the seed, the editor and the renderer agree. The
+   * previous version of this was a switch that knew about `stats` and `gallery`
+   * but not `services`, and which seeded `cta.buttonText` for a field the CTA
+   * renderer never read.
+   */
   const getDefaultContent = (type: CMSBlock['type']): Record<string, any> => {
-    switch (type) {
-      case 'hero': return defaultHeroContent()
-      case 'text': return { title: 'Ny overskrift', body: 'Tekst indhold...' }
-      case 'contentImage': return { title: 'Ny overskrift', description: 'Beskrivelse her...', buttonText: 'Læs mere', layout: 'image-left' }
-      case 'cta': return { title: 'Klar til at komme i gang?', buttonText: 'Kontakt os' }
-      case 'stats': return {
-        stats: [
-          { id: generateId('stat-0'), number: '50+', label: 'Projekter' },
-          { id: generateId('stat-1'), number: '100%', label: 'Tilfredse' },
-          { id: generateId('stat-2'), number: '5+', label: 'Års erfaring' },
-          { id: generateId('stat-3'), number: '24/7', label: 'Support' },
-        ]
-      }
-      case 'gallery': return {
-        items: [
-          { id: generateId('gallery-0'), title: 'Projekt 1', category: 'Hjemmeside' },
-          { id: generateId('gallery-1'), title: 'Projekt 2', category: 'Webshop' },
-          { id: generateId('gallery-2'), title: 'Projekt 3', category: 'Meta Ads' },
-        ]
-      }
-      default: return {}
-    }
+    if (type === 'hero') return defaultHeroContent()
+    const def = getBlockDefinition(type)
+    return def ? def.defaultContent() : {}
   }
 
   const addBlockFromPanel = (type: CMSBlock['type']) => {
@@ -914,8 +904,24 @@ export function AdminWorkspace({
     return <Icon size={18} />
   }
 
-  const getBlockLabel = (type: string) => {
-    return blockTypes.find(b => b.type === type)?.label || type
+  /**
+   * A block's display name, from the registry rather than the addable list.
+   *
+   * `blockTypes` excludes the hero, so reading labels from it would fall back to
+   * the raw type string for the one block the outline always shows.
+   */
+  const getBlockLabel = (type: string) => getBlockDefinition(type as CMSBlock['type'])?.label || type
+
+  /**
+   * The one-line summary on an outline row.
+   *
+   * Each block declares how to describe itself, so the row stops being a
+   * hand-written special case per type - and a new block gets a sensible summary
+   * without anyone remembering to write one.
+   */
+  const getBlockSummary = (block: CMSBlock) => {
+    const def = getBlockDefinition(block.type)
+    return def ? def.summary(block.content) : ''
   }
 
   const openPage = (slug: string) =>
@@ -1881,12 +1887,7 @@ export function AdminWorkspace({
                             index={index}
                             total={editableBlocks.length}
                             label={getBlockLabel(block.type)}
-                            summary={
-                              block.content?.title ||
-                              block.content?.body?.slice?.(0, 60) ||
-                              block.content?.description?.slice?.(0, 60) ||
-                              'Uden titel'
-                            }
+                            summary={getBlockSummary(block)}
                             icon={getBlockIcon(block.type)}
                             isEditing={editingBlock === block.id}
                             dropSide={
@@ -1988,7 +1989,7 @@ export function AdminWorkspace({
 
 
       {showComponentPicker && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComponentPicker(false)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowComponentPicker(false)}>
           <div className="relative z-10 max-h-[80vh] w-full max-w-2xl overflow-y-auto rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
               <h3 className="text-sm font-semibold text-[var(--ink)]">Vælg komponent</h3>
@@ -2012,7 +2013,7 @@ export function AdminWorkspace({
       )}
 
       {showCreatePage && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCreatePage(false)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowCreatePage(false)}>
           <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
             <div className="px-6 py-4 border-b border-[var(--hairline)]">
               <h3 className="text-sm font-semibold text-[var(--ink)]">Opret ny side</h3>
@@ -2085,7 +2086,7 @@ export function AdminWorkspace({
       )}
 
       {deleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setDeleteConfirm(null)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setDeleteConfirm(null)}>
           <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
             <div className="p-6 text-center">
               <div className="w-16 h-16 rounded-full bg-[var(--danger-soft)] flex items-center justify-center mx-auto mb-4">
@@ -2146,7 +2147,7 @@ export function AdminWorkspace({
       )}
 
       {blockDeleteConfirm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setBlockDeleteConfirm(null)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setBlockDeleteConfirm(null)}>
           <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
             <div className="p-6 text-center">
               <div className="w-16 h-16 rounded-full bg-[var(--danger-soft)] flex items-center justify-center mx-auto mb-4">
@@ -2387,7 +2388,7 @@ export function AdminWorkspace({
       )}
 
       {showSupport && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSupport(false)}>
+        <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowSupport(false)}>
           <div className="relative z-10 w-full max-w-sm rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
             <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
               <h3 className="text-sm font-semibold text-[var(--ink)]">Support</h3>
@@ -2416,13 +2417,14 @@ export function AdminWorkspace({
   )
 }
 
-function getBlockLabel(type: string) {
-  return blockTypes.find(b => b.type === type)?.label || type
-}
-
 function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocalContentRef }: { block: CMSBlock; onClose: () => void; onSave: (content: Record<string, any>) => void; onOpenMediaPicker?: (filter: 'image' | 'video', fieldKey: string) => void; updateLocalContentRef?: React.MutableRefObject<((fieldKey: string | null, url?: string) => void) | null> }) {
   const [localContent, setLocalContent] = useState(block.content || {})
   const mediaPickerOpenRef = useRef(false)
+
+  // The block's own declaration of its fields. Read here rather than passed in
+  // so the editor cannot be shown for a type that has no definition, which would
+  // render an empty panel with no way to tell that something is wrong.
+  const blockDefinition = getBlockDefinition(block.type)
 
   // Re-sync from the CMS, but never while the media picker is open: the picker
   // writes straight to the CMS, and syncing mid-flight would clobber the edit.
@@ -2624,7 +2626,8 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
                 />
                 <button
                   type="button"
-                  onClick={() => handleMediaClick('backgroundImage')}
+                      onClick={() => handleMediaClick('backgroundImage')}
+                      aria-label="Vælg baggrundsbillede"
                   className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90"
                 >
                   <ImageIcon size={16} />
@@ -2663,7 +2666,8 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
                 />
                 <button
                   type="button"
-                  onClick={() => handleMediaClick('backgroundVideo')}
+                      onClick={() => handleMediaClick('backgroundVideo')}
+                      aria-label="Vælg baggrundsvideo"
                   className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90"
                 >
                   <Film size={16} />
@@ -2768,260 +2772,20 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
           )}
         </>
       )}
-      
-      {block.type === 'text' && (
-        <>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Titel</label>
-            <input
-              type="text"
-              value={localContent.title || ''}
-              onChange={e => setLocalContent({ ...localContent, title: e.target.value })}
-              className="admin-input"
-            />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Indhold</label>
-            <textarea
-              value={localContent.body || ''}
-              onChange={e => setLocalContent({ ...localContent, body: e.target.value })}
-              rows={6}
-              className="admin-input"
-            />
-          </div>
-        </>
-      )}
-      
-      {block.type === 'cta' && (
-        <>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Titel (H2)</label>
-            <input
-              type="text"
-              value={localContent.title || ''}
-              onChange={e => setLocalContent({ ...localContent, title: e.target.value })}
-              className="admin-input"
-            />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Beskrivelse</label>
-            <textarea
-              value={localContent.description || ''}
-              onChange={e => setLocalContent({ ...localContent, description: e.target.value })}
-              rows={4}
-              className="admin-input"
-            />
-          </div>
-        </>
+
+      {/* Every other block is generated from lib/blocks.ts.
+          The hero keeps its bespoke editor above because its impact levels and
+          background controls do not fit the generic field vocabulary. */}
+      {blockDefinition && !blockDefinition.bespokeEditor && (
+        <BlockFieldEditor
+          definition={blockDefinition}
+          content={localContent}
+          onChange={patch => setLocalContent(prev => ({ ...prev, ...patch }))}
+          onOpenMediaPicker={handleMediaClick}
+        />
       )}
 
-      {block.type === 'contentImage' && (
-        <>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Layout</label>
-            <select
-              value={localContent.layout || 'image-left'}
-              onChange={e => setLocalContent({ ...localContent, layout: e.target.value })}
-              className="admin-input"
-            >
-              <option value="image-left">Billede til venstre</option>
-              <option value="image-right">Billede til højre</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Titel (H2)</label>
-            <input
-              type="text"
-              value={localContent.title || ''}
-              onChange={e => setLocalContent({ ...localContent, title: e.target.value })}
-              className="admin-input"
-            />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Beskrivelse</label>
-            <textarea
-              value={localContent.description || ''}
-              onChange={e => setLocalContent({ ...localContent, description: e.target.value })}
-              rows={4}
-              className="admin-input"
-            />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Knap tekst</label>
-            <input
-              type="text"
-              value={localContent.buttonText || ''}
-              onChange={e => setLocalContent({ ...localContent, buttonText: e.target.value })}
-              className="admin-input"
-              placeholder="f.eks. Læs mere"
-            />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Knap link</label>
-            <input
-              type="text"
-              value={localContent.buttonLink || ''}
-              onChange={e => setLocalContent({ ...localContent, buttonLink: e.target.value })}
-              className="admin-input"
-              placeholder="f.eks. /ydelser"
-            />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Billede URL</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={localContent.image || ''}
-                onChange={e => setLocalContent({ ...localContent, image: e.target.value })}
-                className="admin-input"
-                placeholder="https://..."
-              />
-              {onOpenMediaPicker && (
-                <button
-                  type="button"
-                  onClick={() => handleMediaClick('image')}
-                  className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--surface-hover)] px-3.5 text-sm font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-sunken)]"
-                >
-                  <ImageIcon size={18} />
-                </button>
-              )}
-            </div>
-            {localContent.image && (
-              <div className="mt-2 relative w-full h-32 bg-[var(--surface-hover)] bg-[var(--surface)] rounded-lg overflow-hidden">
-                <img src={localContent.image} alt="Preview" className="w-full h-full object-cover" />
-                <button
-                  type="button"
-                  onClick={() => setLocalContent({ ...localContent, image: '' })}
-                  className="absolute right-1 top-1 flex h-6 w-6 items-center justify-center rounded-md bg-[var(--danger)] text-white transition-opacity hover:opacity-90"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {block.type === 'stats' && (
-        <>
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-[var(--ink-2)]">Statistikker</label>
-            <button
-              type="button"
-              onClick={() => {
-                const newStats = [
-                  ...(localContent.stats || []),
-                  { id: generateId('stat-new'), number: '0', label: 'Ny statistik' }
-                ]
-                setLocalContent({ ...localContent, stats: newStats })
-              }}
-              className="text-sm text-[var(--accent)] hover:text-[var(--accent)]"
-            >
-              + Tilføj
-            </button>
-          </div>
-          {(localContent.stats || []).map((stat: any, index: number) => (
-            <div key={stat.id} className="p-3 bg-[var(--surface-sunken)] bg-[var(--surface-hover)] rounded-lg mb-2">
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  value={stat.number || ''}
-                  onChange={e => {
-                    const newStats = [...(localContent.stats || [])]
-                    newStats[index] = { ...stat, number: e.target.value }
-                    setLocalContent({ ...localContent, stats: newStats })
-                  }}
-                  className="admin-input px-3 py-1.5 text-sm"
-                  placeholder="Tal"
-                />
-                <input
-                  type="text"
-                  value={stat.label || ''}
-                  onChange={e => {
-                    const newStats = [...(localContent.stats || [])]
-                    newStats[index] = { ...stat, label: e.target.value }
-                    setLocalContent({ ...localContent, stats: newStats })
-                  }}
-                  className="admin-input px-3 py-1.5 text-sm"
-                  placeholder="Label"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newStats = (localContent.stats || []).filter((_: any, i: number) => i !== index)
-                    setLocalContent({ ...localContent, stats: newStats })
-                  }}
-                  className="p-1.5 text-[var(--danger)] hover:text-[var(--danger)]"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </>
-      )}
-
-      {block.type === 'gallery' && (
-        <>
-          <div className="flex justify-between items-center mb-2">
-            <label className="block text-sm font-medium text-[var(--ink-2)]">Galleri elementer</label>
-            <button
-              type="button"
-              onClick={() => {
-                const newItems = [
-                  ...(localContent.items || []),
-                  { id: generateId('gallery-new'), title: 'Nyt projekt', category: 'Hjemmeside' }
-                ]
-                setLocalContent({ ...localContent, items: newItems })
-              }}
-              className="text-sm text-[var(--accent)] hover:text-[var(--accent)]"
-            >
-              + Tilføj
-            </button>
-          </div>
-          {(localContent.items || []).map((item: any, index: number) => (
-            <div key={item.id} className="p-3 bg-[var(--surface-sunken)] bg-[var(--surface-hover)] rounded-lg mb-2">
-              <div className="flex gap-2 mb-2">
-                <input
-                  type="text"
-                  value={item.title || ''}
-                  onChange={e => {
-                    const newItems = [...(localContent.items || [])]
-                    newItems[index] = { ...item, title: e.target.value }
-                    setLocalContent({ ...localContent, items: newItems })
-                  }}
-                  className="admin-input px-3 py-1.5 text-sm"
-                  placeholder="Titel"
-                />
-                <input
-                  type="text"
-                  value={item.category || ''}
-                  onChange={e => {
-                    const newItems = [...(localContent.items || [])]
-                    newItems[index] = { ...item, category: e.target.value }
-                    setLocalContent({ ...localContent, items: newItems })
-                  }}
-                  className="admin-input px-3 py-1.5 text-sm"
-                  placeholder="Kategori"
-                />
-                <button
-                  type="button"
-                  onClick={() => {
-                    const newItems = (localContent.items || []).filter((_: any, i: number) => i !== index)
-                    setLocalContent({ ...localContent, items: newItems })
-                  }}
-                  className="p-1.5 text-[var(--danger)] hover:text-[var(--danger)]"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-          ))}
-        </>
-      )}
-      
-      {/* The save action lives in the slide-over footer; this form lets the
-          footer button submit it, and Enter works in any field. */}
+      {/* Enter in any field applies, matching the footer button. */}
       <form id="block-edit-form" onSubmit={e => { e.preventDefault(); handleSave() }} className="hidden" />
     </div>
   )
@@ -3053,7 +2817,7 @@ function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pag
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Rediger navigationspunkt</h3>
@@ -3216,7 +2980,7 @@ function MetaEditModal({ page, onClose, onSave, onSelectImage }: { page: any; on
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Rediger SEO</h3>
@@ -3314,7 +3078,7 @@ function PageEditModal({ page, pages, onClose, onSave }: { page: { slug: string;
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Rediger side</h3>
@@ -3400,7 +3164,7 @@ function AddNavItemModal({ pages, navigation, onClose, onSave }: { pages: any[];
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Tilføj navigationspunkt</h3>
@@ -3487,7 +3251,7 @@ function CreateUserModal({ onClose, onSave, onGenerate }: { onClose: () => void;
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Opret bruger</h3>
@@ -3589,7 +3353,7 @@ function EditUserModal({ user, onClose, onSaveEmail, onSavePassword, onDelete, u
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Rediger bruger</h3>
@@ -3717,18 +3481,16 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
   const [image, setImage] = useState(caseItem.image)
   const [link, setLink] = useState(caseItem.link || '')
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
 
   const handleUpload = async (file: File) => {
     setUploading(true)
-    const formData = new FormData()
-    formData.append('file', file)
     try {
-      const res = await fetch('/api/media', { method: 'POST', headers: await authHeaders(), body: formData })
-      const data = await res.json()
-      if (data.file?.url) setImage(data.file.url)
+      setImage((await uploadMediaFile(file)).url)
     } catch (error) {
       console.error('Upload error:', error)
+      setUploadError(error instanceof Error ? error.message : 'Uploaden mislykkedes')
     }
     setUploading(false)
   }
@@ -3739,7 +3501,7 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-y-auto rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Rediger case</h3>
@@ -3774,6 +3536,11 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
                 }} />
               </label>
             </div>
+            {uploadError && (
+              <div className="mt-3">
+                <UploadErrorNote message={uploadError} onDismiss={() => setUploadError(null)} />
+              </div>
+            )}
           </div>
         </div>
         <div className="px-6 py-4 border-t border-[var(--hairline)] flex justify-between gap-3">
@@ -3807,18 +3574,16 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
   const [content, setContent] = useState(testimonial.content)
   const [image, setImage] = useState(testimonial.image)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
 
   const handleUpload = async (file: File) => {
     setUploading(true)
-    const formData = new FormData()
-    formData.append('file', file)
     try {
-      const res = await fetch('/api/media', { method: 'POST', headers: await authHeaders(), body: formData })
-      const data = await res.json()
-      if (data.file?.url) setImage(data.file.url)
+      setImage((await uploadMediaFile(file)).url)
     } catch (error) {
       console.error('Upload error:', error)
+      setUploadError(error instanceof Error ? error.message : 'Uploaden mislykkedes')
     }
     setUploading(false)
   }
@@ -3829,7 +3594,7 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 flex max-h-[90vh] w-full max-w-lg flex-col overflow-y-auto rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Rediger udtalelse</h3>
@@ -3868,6 +3633,11 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
                 }} />
               </label>
             </div>
+            {uploadError && (
+              <div className="mt-3">
+                <UploadErrorNote message={uploadError} onDismiss={() => setUploadError(null)} />
+              </div>
+            )}
           </div>
         </div>
         <div className="px-6 py-4 border-t border-[var(--hairline)] flex justify-between gap-3">
@@ -3908,9 +3678,16 @@ function MediaLibrary() {
   const [files, setFiles] = useState<MediaFile[]>([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [filter, setFilter] = useState<string>('all')
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const [search, setSearch] = useState('')
+  // Multi-select for bulk delete. A Set of file names, because that is the
+  // identifier the delete API takes - keying on the rendered index would
+  // re-point at a different file whenever the list is filtered or re-sorted.
+  const [selected, setSelected] = useState<Set<string>>(() => new Set())
+  const [confirmDelete, setConfirmDelete] = useState<string[] | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     fetchFiles()
@@ -3934,44 +3711,67 @@ function MediaLibrary() {
 
     setUploading(true)
     const newFiles: MediaFile[] = []
+    const failures: string[] = []
 
     for (let i = 0; i < fileList.length; i++) {
-      const file = fileList[i]
-      const formData = new FormData()
-      formData.append('file', file)
-
       try {
-        const res = await fetch('/api/media', {
-          method: 'POST',
-          headers: await authHeaders(),
-          body: formData,
-        })
-        const data = await res.json()
-        if (data.file) {
-          newFiles.push(data.file)
-        }
+        newFiles.push(await uploadMediaFile(fileList[i]))
       } catch (error) {
         console.error('Error uploading file:', error)
+        failures.push(
+          `${fileList[i].name}: ${error instanceof Error ? error.message : 'mislykkedes'}`
+        )
       }
     }
+
+    if (failures.length) setUploadError(failures.join('\n'))
 
     setFiles(prev => [...newFiles, ...prev])
     setUploading(false)
     e.target.value = ''
   }
 
-  const handleDelete = async (fileName: string) => {
-    if (!confirm('Er du sikker på at du vil slette denne fil?')) return
-
+  /**
+   * Deletes the given files, and reports anything that survived.
+   *
+   * Selection is dropped for every name the API confirmed, and kept for the
+   * rest, so a partial failure leaves the still-present files selected and
+   * obvious rather than silently absent from the grid.
+   */
+  const runDelete = async (fileNames: string[]) => {
+    setDeleting(true)
     try {
-      await fetch(`/api/media?file=${encodeURIComponent(fileName)}`, {
-        method: 'DELETE',
-        headers: await authHeaders(),
+      const { deleted, failed } = await deleteMediaFiles(fileNames)
+
+      setFiles(prev => prev.filter(f => !deleted.includes(f.name)))
+      setSelected(prev => {
+        const next = new Set(prev)
+        for (const name of deleted) next.delete(name)
+        return next
       })
-      setFiles(prev => prev.filter(f => f.name !== fileName))
+
+      if (failed.length) {
+        setUploadError(
+          `Kunne ikke slette ${failed.length} fil(er):\n` +
+            failed.map(f => `${f.file}: ${f.error}`).join('\n')
+        )
+      }
     } catch (error) {
       console.error('Error deleting file:', error)
+      setUploadError(error instanceof Error ? error.message : 'Kunne ikke slette filerne.')
+    } finally {
+      setDeleting(false)
+      setConfirmDelete(null)
     }
+  }
+
+  const toggleSelected = (fileName: string) => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (next.has(fileName)) next.delete(fileName)
+      else next.add(fileName)
+      return next
+    })
   }
 
   const copyToClipboard = (url: string) => {
@@ -3993,6 +3793,26 @@ function MediaLibrary() {
   const displayedFiles = search 
     ? filteredFiles.filter(f => f.name.toLowerCase().includes(search.toLowerCase()))
     : filteredFiles
+
+  // "Select all" acts on what is on screen, not on the whole library, so it
+  // stays truthful when a filter or a search is narrowing the grid.
+  const selectedOnScreen = displayedFiles.filter(f => selected.has(f.name))
+  const allOnScreenSelected =
+    displayedFiles.length > 0 && selectedOnScreen.length === displayedFiles.length
+  const someOnScreenSelected =
+    selectedOnScreen.length > 0 && selectedOnScreen.length < displayedFiles.length
+
+  const toggleAllOnScreen = () => {
+    setSelected(prev => {
+      const next = new Set(prev)
+      if (allOnScreenSelected) {
+        for (const f of displayedFiles) next.delete(f.name)
+      } else {
+        for (const f of displayedFiles) next.add(f.name)
+      }
+      return next
+    })
+  }
 
   const getFileIcon = (category: string) => {
     switch (category) {
@@ -4039,6 +3859,7 @@ function MediaLibrary() {
 
   return (
     <div className="space-y-4">
+      {uploadError && <UploadErrorNote message={uploadError} onDismiss={() => setUploadError(null)} />}
       <div className="flex flex-wrap items-center gap-3">
         <Input
           value={search}
@@ -4072,6 +3893,23 @@ function MediaLibrary() {
         </div>
 
         <div className="ml-auto flex items-center gap-3">
+          {displayedFiles.length > 0 && (
+            <label className="flex cursor-pointer select-none items-center gap-1.5 text-[13px] text-[var(--ink-2)]">
+              <input
+                type="checkbox"
+                // A real tri-state rather than a checked prop that lies: with
+                // some-but-not-all selected the box has to read as
+                // indeterminate, or "select all" looks already done.
+                ref={el => {
+                  if (el) el.indeterminate = someOnScreenSelected
+                }}
+                checked={allOnScreenSelected}
+                onChange={toggleAllOnScreen}
+                className="h-3.5 w-3.5 accent-[var(--accent)]"
+              />
+              Vælg alle
+            </label>
+          )}
           <span className="admin-num text-[11px] text-[var(--ink-3)]">
             {displayedFiles.length}
             {search ? ` af ${files.length}` : ''} filer
@@ -4079,6 +3917,40 @@ function MediaLibrary() {
           {uploadLabel(uploading ? 'Uploader…' : 'Upload filer')}
         </div>
       </div>
+
+      {/* Only present once something is selected, so the destructive action is
+          never one stray click away on a screen where nothing is picked. */}
+      {selected.size > 0 && (
+        <div
+          role="region"
+          aria-label="Valgte filer"
+          className="flex flex-wrap items-center gap-3 rounded-lg border border-[var(--accent-line)] bg-[var(--accent-soft)] px-3.5 py-2.5"
+        >
+          <p className="text-[13px] font-medium text-[var(--ink)]">
+            {/* "valgt" agrees with the count: 1 valgt fil, 3 valgte filer. */}
+            {selected.size === 1 ? '1 valgt fil' : `${selected.size} valgte filer`}
+          </p>
+          <div className="ml-auto flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setSelected(new Set())}
+              disabled={deleting}
+              className="inline-flex h-7 items-center rounded-md px-2.5 text-[13px] font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] disabled:opacity-50"
+            >
+              Ryd valg
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(Array.from(selected))}
+              disabled={deleting}
+              className="inline-flex h-7 items-center gap-1.5 rounded-md bg-[var(--danger)] px-2.5 text-[13px] font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+            >
+              <Trash2 size={13} />
+              Slet valgte
+            </button>
+          </div>
+        </div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center rounded-lg border border-[var(--hairline)] py-16">
@@ -4096,11 +3968,22 @@ function MediaLibrary() {
           action={search ? undefined : uploadLabel('Upload den første fil')}
         />
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
-          {displayedFiles.map((file, index) => (
+        <div
+          data-media-grid=""
+          className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5"
+        >
+          {displayedFiles.map((file, index) => {
+            const isSelected = selected.has(file.name)
+            return (
             <div
               key={`${file.name}-${index}`}
-              className="group relative overflow-hidden rounded-lg border border-[var(--hairline)] bg-[var(--surface)] transition-colors hover:border-[var(--hairline-strong)]"
+              data-media-item={file.name}
+              className={cx(
+                'group relative overflow-hidden rounded-lg border bg-[var(--surface)] transition-colors',
+                isSelected
+                  ? 'border-[var(--accent)] ring-1 ring-[var(--accent)]'
+                  : 'border-[var(--hairline)] hover:border-[var(--hairline-strong)]'
+              )}
             >
               <div className="relative flex aspect-square items-center justify-center bg-[var(--surface-sunken)]">
                 {file.category === 'image' ? (
@@ -4112,6 +3995,23 @@ function MediaLibrary() {
                 ) : (
                   <span className="text-[var(--ink-3)]">{getFileIcon(file.category)}</span>
                 )}
+
+                {/* The select control sits opposite the action buttons so the
+                    two never overlap: both are in the thumbnail's top corners. */}
+                <label
+                  className={cx(
+                    'absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded bg-[var(--surface)]/90 backdrop-blur transition-opacity focus-within:opacity-100',
+                    isSelected ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+                  )}
+                >
+                  <input
+                    type="checkbox"
+                    checked={isSelected}
+                    onChange={() => toggleSelected(file.name)}
+                    aria-label={`Vælg ${file.name}`}
+                    className="h-3.5 w-3.5 accent-[var(--accent)]"
+                  />
+                </label>
 
                 {/* Actions live on the thumbnail, matching the logo grid, so
                     there's no full-bleed black overlay covering the preview. */}
@@ -4146,7 +4046,7 @@ function MediaLibrary() {
                   <span className="flex h-6 w-6 items-center justify-center rounded bg-[var(--surface)]/90 backdrop-blur">
                     <button
                       type="button"
-                      onClick={() => handleDelete(file.name)}
+                      onClick={() => setConfirmDelete([file.name])}
                       aria-label={`Slet ${file.name}`}
                       title="Slet"
                       className="flex h-6 w-6 items-center justify-center rounded text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
@@ -4166,7 +4066,57 @@ function MediaLibrary() {
                 </p>
               </div>
             </div>
-          ))}
+            )
+          })}
+        </div>
+      )}
+
+      {/* Confirmation before anything is destroyed. Names the count and, for a
+          bulk delete, that it is several files - a single "are you sure" for an
+          unknown number of files is how a library gets emptied by accident. */}
+      {confirmDelete && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="media-delete-title"
+          className="fixed inset-0 z-[110] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => !deleting && setConfirmDelete(null)}
+        >
+          <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]">
+            <div className="p-6 text-center">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[var(--danger-soft)]">
+                <Trash2 size={32} className="text-[var(--danger)]" />
+              </div>
+              <h3 id="media-delete-title" className="mb-2 text-lg font-semibold text-[var(--ink)]">
+                {confirmDelete.length === 1
+                  ? 'Slet fil?'
+                  : `Slet ${confirmDelete.length} filer?`}
+              </h3>
+              <p className="text-[var(--ink-2)]">
+                {confirmDelete.length === 1
+                  ? 'Er du sikker på at du vil slette denne fil? Denne handling kan ikke fortrydes.'
+                  : `Er du sikker på at du vil slette ${confirmDelete.length} filer? Denne handling kan ikke fortrydes. Filer, der bruges på sitet, holder op med at virke.`}
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-[var(--hairline)] px-5 py-3.5">
+              <button
+                type="button"
+                onClick={() => setConfirmDelete(null)}
+                disabled={deleting}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-3.5 text-sm font-medium text-[var(--ink-2)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)] disabled:opacity-50"
+              >
+                Annuller
+              </button>
+              <button
+                type="button"
+                onClick={() => runDelete(confirmDelete)}
+                disabled={deleting}
+                className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--danger)] px-3.5 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60"
+              >
+                {deleting ? 'Sletter…' : 'Slet'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -4179,11 +4129,35 @@ interface MediaPickerModalProps {
   filter?: 'image' | 'video' | 'audio' | 'document'
 }
 
+function UploadErrorNote({ message, onDismiss }: { message: string; onDismiss: () => void }) {
+  return (
+    <div
+      role="alert"
+      data-upload-error=""
+      className="flex items-start gap-2.5 rounded-lg border border-[var(--danger)] bg-[var(--danger-soft)] px-3.5 py-2.5"
+    >
+      <AlertCircle size={16} className="mt-0.5 shrink-0 text-[var(--danger)]" />
+      <p className="flex-1 whitespace-pre-line text-[13px] leading-relaxed text-[var(--danger)]">
+        {message}
+      </p>
+      <button
+        type="button"
+        onClick={onDismiss}
+        aria-label="Luk fejl"
+        className="shrink-0 text-[var(--danger)] opacity-70 transition-opacity hover:opacity-100"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  )
+}
+
 function MediaPickerModal({ onSelect, onClose, filter: initialFilter }: MediaPickerModalProps) {
   const [files, setFiles] = useState<MediaFile[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<string>(initialFilter || 'image')
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
 
   useEffect(() => {
     fetchFiles()
@@ -4203,19 +4177,15 @@ function MediaPickerModal({ onSelect, onClose, filter: initialFilter }: MediaPic
 
   const handleUpload = async (file: File) => {
     setUploading(true)
-    const formData = new FormData()
-    formData.append('file', file)
+    setUploadError(null)
     try {
-      const res = await fetch('/api/media', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json()
-      if (data.file?.url) {
-        setFiles(prev => [data.file, ...prev])
-      }
+      // This one had no Authorization header, so the API answered 401 and the
+      // handler read `data.file` off the error body and did nothing at all.
+      const uploaded = await uploadMediaFile(file)
+      setFiles(prev => [uploaded, ...prev])
     } catch (error) {
       console.error('Upload error:', error)
+      setUploadError(error instanceof Error ? error.message : 'Uploaden mislykkedes')
     }
     setUploading(false)
   }
@@ -4230,7 +4200,7 @@ function MediaPickerModal({ onSelect, onClose, filter: initialFilter }: MediaPic
   ]
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[100] p-4" onClick={onClose}>
       <div className="relative z-10 flex max-h-[80vh] w-full max-w-4xl flex-col rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Mediebibliotek</h3>
@@ -4248,6 +4218,11 @@ function MediaPickerModal({ onSelect, onClose, filter: initialFilter }: MediaPic
         </div>
         
         <div className="px-6 py-3 border-b border-[var(--hairline)]">
+          {uploadError && (
+            <div className="mb-3">
+              <UploadErrorNote message={uploadError} onDismiss={() => setUploadError(null)} />
+            </div>
+          )}
           <div className="flex gap-2">
             {categories.map(cat => (
               <button
@@ -4313,6 +4288,7 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
   const [image, setImage] = useState(logo.image)
   const [website, setWebsite] = useState(logo.website || '')
   const [uploading, setUploading] = useState(false)
+  const [uploadError, setUploadError] = useState<string | null>(null)
   const [showPicker, setShowPicker] = useState(false)
 
   const handleSave = () => {
@@ -4322,23 +4298,17 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
 
   const handleUpload = async (file: File) => {
     setUploading(true)
-    const formData = new FormData()
-    formData.append('file', file)
     try {
-      const res = await fetch('/api/media', {
-        method: 'POST',
-        body: formData,
-      })
-      const data = await res.json()
-      if (data.file?.url) setImage(data.file.url)
+      setImage((await uploadMediaFile(file)).url)
     } catch (error) {
       console.error('Upload error:', error)
+      setUploadError(error instanceof Error ? error.message : 'Uploaden mislykkedes')
     }
     setUploading(false)
   }
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
+    <div role="dialog" aria-modal="true" className="fixed inset-0 bg-black/50 flex items-center justify-center z-[90] p-4" onClick={onClose}>
       <div className="relative z-10 w-full max-w-lg rounded-lg border border-[var(--hairline)] bg-[var(--surface)] shadow-[0_16px_48px_-12px_rgba(0,0,0,0.28)]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-4 border-b border-[var(--hairline)] px-5 py-4">
           <h3 className="text-sm font-semibold text-[var(--ink)]">Rediger logo</h3>
@@ -4374,6 +4344,11 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
                 <span className="text-[var(--ink-2)]">{uploading ? 'Uploader...' : 'Upload fra pc'}</span>
               </label>
             </div>
+            {uploadError && (
+              <div className="mt-3">
+                <UploadErrorNote message={uploadError} onDismiss={() => setUploadError(null)} />
+              </div>
+            )}
           </div>
         </div>
         <div className="px-6 py-4 border-t border-[var(--hairline)] flex justify-between gap-3">

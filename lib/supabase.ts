@@ -30,6 +30,94 @@ export interface CMSData {
   updated_at: string
 }
 
+export interface UploadedMedia {
+  name: string
+  url: string
+  size: number
+  type: string
+  category: string
+  createdAt: string
+}
+
+/**
+ * Uploads a file through the media API, with the session attached.
+ *
+ * This existed as six near-identical inline copies in the admin, and they had
+ * drifted: two of them forgot the Authorization header, so the API answered 401
+ * and the handler read `data.file` off an error body. With no `res.ok` check
+ * that looked exactly like a successful upload, so choosing a file did nothing
+ * and said nothing. One implementation, checked, with the server's own error
+ * message surfaced.
+ */
+export async function uploadMediaFile(file: File): Promise<UploadedMedia> {
+  const formData = new FormData()
+  formData.append('file', file)
+
+  const res = await fetch('/api/media', {
+    method: 'POST',
+    headers: await authHeaders(),
+    body: formData,
+  })
+
+  const payload = await res.json().catch(() => null)
+
+  if (!res.ok) {
+    const reason =
+      (payload && (payload.error as string)) ||
+      (res.status === 401 || res.status === 403
+        ? 'Du er ikke logget ind. Log ind igen og prøv.'
+        : `Kunne ikke uploade filen (fejl ${res.status}).`)
+    throw new Error(reason)
+  }
+
+  if (!payload?.file?.url) {
+    throw new Error('Serveren svarede uden en fil. Prøv igen.')
+  }
+
+  return payload.file as UploadedMedia
+}
+
+export interface DeleteResult {
+  deleted: string[]
+  failed: { file: string; error: string }[]
+}
+
+/**
+ * Deletes one or more media files in a single request.
+ *
+ * Reports which files went and which did not, because a bulk delete that
+ * reports only "done" leaves the caller showing an empty grid while files are
+ * still on disk. The API deletes what it can and names the rest.
+ */
+export async function deleteMediaFiles(fileNames: string[]): Promise<DeleteResult> {
+  if (fileNames.length === 0) return { deleted: [], failed: [] }
+
+  const query = fileNames
+    .map(name => `file=${encodeURIComponent(name)}`)
+    .join('&')
+
+  const res = await fetch(`/api/media?${query}`, {
+    method: 'DELETE',
+    headers: await authHeaders(),
+  })
+
+  const payload = await res.json().catch(() => null)
+
+  if (!res.ok) {
+    const reason =
+      (payload && (payload.error as string)) ||
+      (res.status === 401 || res.status === 403
+        ? 'Du er ikke logget ind. Log ind igen og prøv.'
+        : `Kunne ikke slette filerne (fejl ${res.status}).`)
+    throw new Error(reason)
+  }
+
+  return {
+    deleted: payload?.deleted ?? fileNames,
+    failed: payload?.failed ?? [],
+  }
+}
+
 export async function uploadImage(file: File, folder: string = 'images'): Promise<string | null> {
   const fileExt = file.name.split('.').pop()
   const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`

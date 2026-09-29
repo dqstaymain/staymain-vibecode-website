@@ -163,24 +163,57 @@ export async function DELETE(request: NextRequest) {
     if (unauthorized) return unauthorized
 
     const { searchParams } = new URL(request.url)
-    const fileName = searchParams.get('file')
+    // `file` may be repeated, one per file, so a bulk delete is a single
+    // round trip instead of N of them. A lone `file` is just the same call with
+    // one entry, which keeps every existing call site working untouched.
+    const fileNames = searchParams.getAll('file').filter(Boolean)
 
-    if (!fileName) {
+    if (fileNames.length === 0) {
       return NextResponse.json({ error: 'No file specified' }, { status: 400 })
     }
 
-    const filePath = resolveUploadPath(fileName)
-    if (!filePath) {
-      return NextResponse.json({ error: 'Invalid file name' }, { status: 400 })
+    const deleted: string[] = []
+    const failed: { file: string; error: string }[] = []
+
+    // Deleted one by one rather than as a batch, because they are independent
+    // files: one that is already gone should not abandon the rest, and the
+    // caller needs to be told which specific ones survived so it can say so.
+    for (const fileName of fileNames) {
+      const filePath = resolveUploadPath(fileName)
+      if (!filePath) {
+        failed.push({ file: fileName, error: 'Invalid file name' })
+        continue
+      }
+      if (!existsSync(filePath)) {
+        failed.push({ file: fileName, error: 'File not found' })
+        continue
+      }
+      try {
+        await unlink(filePath)
+        deleted.push(fileName)
+      } catch (error) {
+        console.error(`Error deleting ${fileName}:`, error)
+        failed.push({ file: fileName, error: 'Failed to delete file' })
+      }
     }
 
-    if (!existsSync(filePath)) {
-      return NextResponse.json({ error: 'File not found' }, { status: 404 })
+    // A single-file request that fails keeps the status codes this handler has
+    // always returned, so an existing caller's error handling is unaffected.
+    if (fileNames.length === 1 && failed.length === 1) {
+      const status = failed[0].error === 'File not found' ? 404 : 400
+      return NextResponse.json({ error: failed[0].error }, { status })
     }
 
-    await unlink(filePath)
+    if (deleted.length === 0) {
+      return NextResponse.json(
+        { error: 'Failed to delete file', failed },
+        { status: 500 }
+      )
+    }
 
-    return NextResponse.json({ success: true })
+    // Partial success is a success: the files that could go are gone, and the
+    // ones that could not are named so the UI can report them.
+    return NextResponse.json({ success: true, deleted, failed })
   } catch (error) {
     console.error('Error deleting file:', error)
     return NextResponse.json({ error: 'Failed to delete file' }, { status: 500 })
