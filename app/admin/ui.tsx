@@ -12,9 +12,12 @@
 import { type ReactNode, type ButtonHTMLAttributes, type InputHTMLAttributes, type TextareaHTMLAttributes, type SelectHTMLAttributes, useEffect, useRef } from 'react'
 import { X, Plus, Inbox, AlertCircle } from 'lucide-react'
 
-export function cx(...parts: Array<string | false | null | undefined>) {
-  return parts.filter(Boolean).join(' ')
-}
+// The implementation moved to lib/cx because the public site needs it too, and
+// a component under components/ should not reach into app/admin. Imported here
+// as well as re-exported, because this file uses it internally and the other
+// four files import it from here.
+import { cx } from '@/lib/cx'
+export { cx }
 
 /* ---------------------------------------------------------------- Button -- */
 
@@ -117,8 +120,11 @@ export function Textarea({ className, ...props }: TextareaHTMLAttributes<HTMLTex
 }
 
 export function Select({ className, children, ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
+  // The arrow and its padding come from `select.admin-input` in admin.css. Not
+  // from `pr-8` here: that utility loses to the base class's padding, which is
+  // what left this control with no visible indicator that it opens anything.
   return (
-    <select className={cx('admin-input cursor-pointer pr-8 appearance-none', className)} {...props}>
+    <select className={cx('admin-input cursor-pointer appearance-none', className)} {...props}>
       {children}
     </select>
   )

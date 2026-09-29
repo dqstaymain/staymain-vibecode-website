@@ -27,13 +27,13 @@ export default function Footer() {
             <ul className="space-y-2">
               <li className="flex items-center gap-2 text-white/60 text-sm">
                 <Mail size={14} />
-                <a href={`mailto:${contactInfo.email}`} className="hover:text-[#2563EB] transition-colors">
+                <a href={`mailto:${contactInfo.email}`} className="hover:text-[var(--brand-300)] transition-colors">
                   {contactInfo.email}
                 </a>
               </li>
               <li className="flex items-center gap-2 text-white/60 text-sm">
                 <Phone size={14} />
-                <a href={`tel:${(contactInfo.phone || '').replace(/\s/g, '')}`} className="hover:text-[#2563EB] transition-colors">
+                <a href={`tel:${(contactInfo.phone || '').replace(/\s/g, '')}`} className="hover:text-[var(--brand-300)] transition-colors">
                   {contactInfo.phone}
                 </a>
               </li>
@@ -57,7 +57,7 @@ export default function Footer() {
             <ul className="space-y-3">
               {(contactInfo.footerCol2Links || []).map(link => (
                 <li key={link.id}>
-                  <Link href={link.href} className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
+                  <Link href={link.href} className="text-white/60 hover:text-[var(--brand-300)] transition-colors text-sm">
                     {link.label}
                   </Link>
                 </li>
@@ -72,7 +72,7 @@ export default function Footer() {
             <ul className="space-y-3">
               {(contactInfo.footerCol3Links || []).map(link => (
                 <li key={link.id}>
-                  <Link href={link.href} className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
+                  <Link href={link.href} className="text-white/60 hover:text-[var(--brand-300)] transition-colors text-sm">
                     {link.label}
                   </Link>
                 </li>
@@ -87,7 +87,7 @@ export default function Footer() {
             <ul className="space-y-3">
               {(contactInfo.footerCol4Links || []).map(link => (
                 <li key={link.id}>
-                  <Link href={link.href} className="text-white/60 hover:text-[#2563EB] transition-colors text-sm">
+                  <Link href={link.href} className="text-white/60 hover:text-[var(--brand-300)] transition-colors text-sm">
                     {link.label}
                   </Link>
                 </li>
@@ -103,7 +103,7 @@ export default function Footer() {
             </p>
             <button
               onClick={scrollToTop}
-              className="flex items-center gap-2 text-white/60 hover:text-[#2563EB] transition-colors text-sm"
+              className="flex items-center gap-2 text-white/60 hover:text-[var(--brand-300)] transition-colors text-sm"
             >
               Til toppen
               <ArrowRight size={16} className="rotate-[-90deg]" />

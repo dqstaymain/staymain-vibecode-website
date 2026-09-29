@@ -216,7 +216,9 @@ export default function LoginPage() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="pr-10"
+                // Not `pr-10`: the base class wins that and the toggle ends up on
+                // top of the password. See .admin-input[data-trailing-icon].
+                data-trailing-icon="toggle"
                 required
               />
               <button

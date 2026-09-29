@@ -7,7 +7,7 @@
         "build": "next build",
         "start": "next start",
         "test:e2e": "playwright test",
-        "test:nav": "tsx scripts/test-nav-tree.ts && tsx scripts/check-dnd-wiring.ts",
+        "test:nav": "tsx scripts/test-nav-tree.ts && tsx scripts/check-dnd-wiring.ts && tsx scripts/check-admin-inputs.ts && tsx scripts/check-explicit-save.ts && tsx scripts/check-hooks-order.ts && tsx scripts/test-sitemap.ts && tsx scripts/test-page-list.ts",
         "test": "npm run test:nav"
     },
     "dependencies": {
@@ -30,5 +30,8 @@
         "tailwindcss": "^3.4.3",
         "tsx": "^4.23.15",
         "typescript": "^5.4.5"
+    },
+    "allowScripts": {
+        "esbuild@0.28.2": true
     }
 }

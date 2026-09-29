@@ -24,7 +24,7 @@ export default function CMSPage({ slug }: { slug: string }) {
       <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white dark:from-slate-900 dark:to-slate-800">
         <div className="pt-32 pb-16">
           <div className="max-w-2xl mx-auto px-4 text-center">
-            <div className="text-8xl font-bold text-blue-500 mb-4">404</div>
+            <div className="text-8xl font-bold text-[var(--brand-600)] mb-4">404</div>
             <h1 className="text-3xl font-bold text-slate-900 dark:text-white mb-4">
               Side ikke fundet
             </h1>
@@ -33,7 +33,7 @@ export default function CMSPage({ slug }: { slug: string }) {
             </p>
             <Link
               href="/"
-              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-full transition-colors"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-[var(--brand-500)] hover:bg-[var(--brand-600)] text-white font-medium rounded-full transition-colors"
             >
               Gå til forsiden
             </Link>

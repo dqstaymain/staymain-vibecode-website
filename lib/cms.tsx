@@ -1,7 +1,8 @@
 'use client'
 
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react'
+import { createContext, useContext, useState, useEffect, useMemo, useRef, ReactNode } from 'react'
 import { supabase, authHeaders, isOrderingPersisted, saveCMSPages, loadCMSPages, saveCMSNavigation, loadCMSNavigation, saveCMSContactInfo, loadCMSContactInfo, saveCMSCases, loadCMSCases, saveCMSTestimonials, loadCMSTestimonials, saveCMSCompanyLogos, loadCMSCompanyLogos, deleteCMSPages, deleteCMSNavigation, deleteCMSCase, deleteCMSTestimonial, deleteCMSCompanyLogo } from '@/lib/supabase'
+import { normalisePageHero, defaultHeroContent } from '@/lib/hero'
 import type { User } from '@supabase/supabase-js'
 
 function generateId(prefix: string = 'id'): string {
@@ -62,6 +63,16 @@ export interface CMSPage {
     description?: string
     image?: string
   }
+  /**
+   * When the row was last written, from the database.
+   *
+   * Optional because the column arrives with a migration rather than with the
+   * schema this model was written against: until
+   * supabase/migrations/002_add_updated_at.sql has been run, the loaders map it
+   * to undefined and anything reading it has to cope with that rather than
+   * assume a date.
+   */
+  updatedAt?: string
 }
 
 export interface NavItem {
@@ -73,6 +84,8 @@ export interface NavItem {
   parentNavId?: string
   children?: NavItem[]
   newTab?: boolean
+  /** See CMSPage.updatedAt. */
+  updatedAt?: string
 }
 
 export interface CMSUser {
@@ -109,6 +122,8 @@ export interface Case {
   title: string
   image: string
   link?: string
+  /** See CMSPage.updatedAt. */
+  updatedAt?: string
 }
 
 export interface Testimonial {
@@ -117,6 +132,8 @@ export interface Testimonial {
   role: string
   content: string
   image: string
+  /** See CMSPage.updatedAt. */
+  updatedAt?: string
 }
 
 export interface CompanyLogo {
@@ -124,6 +141,8 @@ export interface CompanyLogo {
   name: string
   image: string
   website?: string
+  /** See CMSPage.updatedAt. */
+  updatedAt?: string
 }
 
 interface CMSContextType {
@@ -134,6 +153,40 @@ interface CMSContextType {
   testimonials: Testimonial[]
   companyLogos: CompanyLogo[]
   contactInfo: ContactInfo
+  /**
+   * True when the editor holds changes that have not been written to Supabase.
+   *
+   * Derived by comparing the working copy against a snapshot taken at load and
+   * refreshed on every successful save, rather than by a flag each mutation has
+   * to remember to set. A missed flag would mean a save button that stays dark
+   * while there is work to lose; this cannot be forgotten because there is
+   * nothing to remember.
+   */
+  hasUnsavedChanges: boolean
+  /** True while a save is in flight, so the button can report it. */
+  saving: boolean
+  /** Result of the last save, for reporting. */
+  saveError: string | null
+  /** Writes the working copy to the site. The only path to Supabase. */
+  save: () => Promise<boolean>
+  /**
+   * When a recovered draft was written, or null if there is none waiting.
+   *
+   * Non-null means an earlier session ended with unsaved work that the site does
+   * not have. It is an offer, not an obligation - see restoreDraft.
+   */
+  pendingDraftAt: number | null
+  restoreDraft: () => void
+  discardDraft: () => void
+  /**
+   * Asks before throwing unsaved work away.
+   *
+   * True means go ahead. The App Router has no navigation blocker, so this is a
+   * confirm() call at each place the admin navigates. Deliberately not a custom
+   * dialog: it has to be synchronous, because the navigation it is guarding is
+   * already under way by the time anything async could resolve.
+   */
+  confirmLeave: () => boolean
   isAuthenticated: boolean
   currentUser: User | null
   supabaseReady: boolean
@@ -178,13 +231,31 @@ interface CMSContextType {
   requestPasswordReset: (email: string) => Promise<{ success: boolean; error?: string }>
 }
 
+/**
+ * The pages a fresh install starts with.
+ *
+ * Each one carries a hero with the impact its job on the site calls for: the
+ * front page is the one place that opens at full height, and the rest are
+ * content pages that should read as a heading rather than an announcement.
+ */
 const defaultPages: CMSPage[] = [
   {
     slug: 'home',
     title: 'Forside',
     meta: { title: 'StayMain | Web Design Agency', description: 'Vi skaber digitale oplevelser, der tæller.' },
     blocks: [
-      { id: 'hero-1', type: 'hero', content: { title: 'Vi skaber digitale oplevelser, der tæller.' } },
+      {
+        id: 'hero-1',
+        type: 'hero',
+        content: {
+          ...defaultHeroContent(),
+          impact: 'high',
+          title: 'Vi skaber digitale oplevelser, der tæller.',
+          description:
+            'StayMain er et kreativt webbureau i Danmark. Vi kombinerer moderne design med teknisk ekspertise for at bygge websites, der leverer resultater.',
+          badge: 'Webbureau i Danmark',
+        },
+      },
       { id: 'services-1', type: 'services' },
       { id: 'testimonials-1', type: 'testimonials' },
       { id: 'cta-1', type: 'cta', content: { title: 'Klar til at komme i gang?', buttonText: 'Kontakt os' } },
@@ -195,6 +266,7 @@ const defaultPages: CMSPage[] = [
     title: 'Ydelser',
     meta: { title: 'Ydelser | StayMain', description: 'Vi tilbyder alt inden for digital markedsføring og webudvikling.' },
     blocks: [
+      { id: 'hero-2', type: 'hero', content: { ...defaultHeroContent('Vores ydelser'), impact: 'medium' } },
       { id: 'text-1', type: 'text', content: { title: 'Vores ydelser', body: 'Vi tilbyder alt inden for digital markedsføring og webudvikling.' } },
       { id: 'services-1', type: 'services' },
     ]
@@ -204,6 +276,7 @@ const defaultPages: CMSPage[] = [
     title: 'Cases',
     meta: { title: 'Cases | StayMain', description: 'Se vores portefølje af succesfulde projekter.' },
     blocks: [
+      { id: 'hero-3', type: 'hero', content: { ...defaultHeroContent('Vores cases'), impact: 'medium' } },
       { id: 'text-1', type: 'text', content: { title: 'Vores cases' } },
       { id: 'gallery-1', type: 'gallery' },
     ]
@@ -213,6 +286,7 @@ const defaultPages: CMSPage[] = [
     title: 'Om os',
     meta: { title: 'Om os | StayMain', description: 'Lær StayMain at kende - et kreativt webbureau i Danmark.' },
     blocks: [
+      { id: 'hero-4', type: 'hero', content: { ...defaultHeroContent('Om StayMain'), impact: 'medium' } },
       { id: 'text-1', type: 'text', content: { title: 'Om StayMain' } },
       { id: 'stats-1', type: 'stats' },
     ]
@@ -222,6 +296,7 @@ const defaultPages: CMSPage[] = [
     title: 'FAQ',
     meta: { title: 'FAQ | StayMain', description: 'Ofte stillede spørgsmål om vores ydelser.' },
     blocks: [
+      { id: 'hero-5', type: 'hero', content: { ...defaultHeroContent('Ofte stillede spørgsmål'), impact: 'low' } },
       { id: 'text-1', type: 'text', content: { title: 'Ofte stillede spørgsmål' } },
     ]
   },
@@ -382,6 +457,82 @@ function getInitialCompanyLogos(): CompanyLogo[] {
   return defaultCompanyLogos
 }
 
+/** Everything the editor owns and a save is responsible for. */
+interface Snapshot {
+  pages: CMSPage[]
+  navigation: NavItem[]
+  cases: Case[]
+  testimonials: Testimonial[]
+  companyLogos: CompanyLogo[]
+  contactInfo: ContactInfo
+}
+
+/**
+ * Everything the editor owns, as one comparable value.
+ *
+ * The baseline this is compared against is what the site last agreed on, and it
+ * doubles as the record of what existed before the current edits - which is the
+ * only way to know what a save has to delete. Serialising to compare is cheaper
+ * than it looks: these arrays are a few dozen small objects, and the comparison
+ * happens on renders the editor is already doing.
+ *
+ * Users are deliberately absent. They are accounts rather than content, they go
+ * through /api/users, and a save button cannot un-create one.
+ */
+function snapshot(state: Snapshot): string {
+  return JSON.stringify(state)
+}
+
+/**
+ * Where an unsaved working copy is parked between visits.
+ *
+ * WordPress autosaves a draft every few seconds and Payload keeps drafts
+ * alongside the published document, and that is what makes "save when you say so"
+ * safe rather than frightening: a closed laptop mid-edit is a pause, not a loss.
+ * Without it, the only protection is the beforeunload prompt, which does nothing
+ * for a crash, a killed tab or a browser that never asks.
+ *
+ * Deliberately not restored automatically. Silently putting back an edit from
+ * three days ago, over a site that has moved on since, is a worse surprise than
+ * asking.
+ */
+const DRAFT_KEY = 'cms_draft'
+
+interface DraftEnvelope {
+  /** When the draft was written, so the offer can say how old it is. */
+  at: number
+  state: Snapshot
+}
+
+/** Every id in a menu tree, children included. */
+function navIds(items: NavItem[]): string[] {
+  return items.flatMap(item => [item.id, ...navIds(item.children ?? [])])
+}
+
+/**
+ * Mirrors the committed state into localStorage.
+ *
+ * Only ever called once the write to Supabase has succeeded, because these keys
+ * are read back as a fallback when the cloud is unreachable - they are a cache
+ * of the site, not a scratch pad for the editor.
+ */
+function cacheLocally(state: Snapshot) {
+  if (typeof window === 'undefined') return
+  try {
+    localStorage.setItem('cms_pages', JSON.stringify(state.pages))
+    localStorage.setItem('cms_navigation', JSON.stringify(state.navigation))
+    localStorage.setItem('cms_cases', JSON.stringify(state.cases))
+    localStorage.setItem('cms_testimonials', JSON.stringify(state.testimonials))
+    localStorage.setItem('cms_company_logos', JSON.stringify(state.companyLogos))
+    if (state.contactInfo.companyName) {
+      localStorage.setItem('cms_contact_info', JSON.stringify(state.contactInfo))
+    }
+  } catch (err) {
+    // A full quota must not fail a save that already reached the database.
+    console.error('Kunne ikke skrive til localStorage:', err)
+  }
+}
+
 export function CMSProvider({ children }: { children: ReactNode }) {
   const [pages, setPages] = useState<CMSPage[]>([])
   const [navigation, setNavigation] = useState<NavItem[]>([])
@@ -394,6 +545,17 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true)
   const [supabaseReady, setSupabaseReady] = useState(false)
   const [hasLoadedFromCloud, setHasLoadedFromCloud] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+  /**
+   * What the site last agreed on, as a snapshot.
+   *
+   * State rather than a ref so that re-baselining after a save re-renders and
+   * the save button disappears; a ref would need a separate nudge to get there.
+   * Also the only record of what existed before the current edits, which is how
+   * save() works out what to delete.
+   */
+  const [baseline, setBaseline] = useState('')
 
   useEffect(() => {
     let cancelled = false
@@ -414,11 +576,16 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         if (cancelled) return
 
         if (cloudPages !== null) {
-          const finalPages = cloudPages.length > 0 ? cloudPages : defaultPages
+          // Every page gets a hero here rather than in a migration: these rows
+          // already exist, and the next save writes the whole array back, so
+          // fixing the shape on load costs nothing and needs no schema change.
+          const finalPages = (cloudPages.length > 0 ? cloudPages : defaultPages).map(
+            normalisePageHero
+          )
           setPages(finalPages)
           localStorage.setItem('cms_pages', JSON.stringify(finalPages))
         } else {
-          setPages(getInitialPages())
+          setPages(getInitialPages().map(normalisePageHero))
         }
 
         if (cloudNav !== null) {
@@ -482,45 +649,198 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // These persist local edits. The `length > 0` guards that used to be here
-  // meant deleting the last case/testimonial/logo was never written back, so it
-  // reappeared on reload. Gate purely on the cloud read having finished.
-  useEffect(() => {
-    if (!hasLoadedFromCloud) return
-    localStorage.setItem('cms_pages', JSON.stringify(pages))
-    saveCMSPages(pages)
-  }, [pages, hasLoadedFromCloud])
+  /**
+   * The working copy, as an object and as a comparable string.
+   *
+   * `hasUnsavedChanges` is the string against the baseline rather than a flag the
+   * mutations set, so there is no path that can change something and forget to
+   * say so. Both forms are memoised together because the draft below needs the
+   * object and serialising then re-parsing to get it would be silly.
+   */
+  const workingState = useMemo(
+    () => ({ pages, navigation, cases, testimonials, companyLogos, contactInfo }),
+    [pages, navigation, cases, testimonials, companyLogos, contactInfo]
+  )
+  const working = useMemo(() => snapshot(workingState), [workingState])
 
-  useEffect(() => {
-    if (!hasLoadedFromCloud) return
-    localStorage.setItem('cms_navigation', JSON.stringify(navigation))
-    saveCMSNavigation(navigation)
-  }, [navigation, hasLoadedFromCloud])
+  // Guarded on the load having finished: before it has, the working copy is
+  // empty state against an empty baseline, which would read as unsaved work.
+  const hasUnsavedChanges = hasLoadedFromCloud && working !== baseline
 
-  useEffect(() => {
-    if (!hasLoadedFromCloud) return
-    localStorage.setItem('cms_cases', JSON.stringify(cases))
-    saveCMSCases(cases)
-  }, [cases, hasLoadedFromCloud])
+  /** A draft found on load that the site no longer matches. */
+  const [pendingDraft, setPendingDraft] = useState<number | null>(null)
+  const draftRef = useRef<DraftEnvelope | null>(null)
 
+  // Taken once, on the first render after the cloud read. Everything above sets
+  // state in the same batch, so by the time hasLoadedFromCloud flips, this render
+  // already holds what the site actually has.
   useEffect(() => {
-    if (!hasLoadedFromCloud) return
-    localStorage.setItem('cms_testimonials', JSON.stringify(testimonials))
-    saveCMSTestimonials(testimonials)
-  }, [testimonials, hasLoadedFromCloud])
+    if (!hasLoadedFromCloud || baseline) return
+    setBaseline(working)
 
-  useEffect(() => {
-    if (!hasLoadedFromCloud) return
-    localStorage.setItem('cms_company_logos', JSON.stringify(companyLogos))
-    saveCMSCompanyLogos(companyLogos)
-  }, [companyLogos, hasLoadedFromCloud])
-
-  useEffect(() => {
-    if (hasLoadedFromCloud && contactInfo.companyName) {
-      localStorage.setItem('cms_contact_info', JSON.stringify(contactInfo))
-      saveCMSContactInfo(contactInfo)
+    // A draft is only worth offering if it differs from what the site has. One
+    // that matches is a save that got as far as the browser and no further.
+    try {
+      const raw = localStorage.getItem(DRAFT_KEY)
+      if (!raw) return
+      const draft = JSON.parse(raw) as DraftEnvelope
+      if (!draft?.state || snapshot(draft.state) === working) {
+        localStorage.removeItem(DRAFT_KEY)
+        return
+      }
+      draftRef.current = draft
+      setPendingDraft(draft.at)
+    } catch {
+      // An unreadable draft is not worth a broken admin.
+      localStorage.removeItem(DRAFT_KEY)
     }
-  }, [contactInfo, hasLoadedFromCloud])
+  }, [hasLoadedFromCloud, working, baseline])
+
+  /**
+   * Keeps the draft in step with the editor, and drops it once it is committed.
+   *
+   * This is the write that makes a crash survivable, so it happens on every
+   * change rather than on a timer. It is a localStorage write of a few dozen
+   * small objects, which is not a cost worth optimising around - and a debounce
+   * would be exactly the kind of cleverness that loses the last edit before a
+   * close.
+   */
+  useEffect(() => {
+    if (!hasLoadedFromCloud) return
+    try {
+      if (hasUnsavedChanges) {
+        localStorage.setItem(DRAFT_KEY, JSON.stringify({ at: Date.now(), state: workingState }))
+      } else {
+        localStorage.removeItem(DRAFT_KEY)
+      }
+    } catch (err) {
+      console.error('Kunne ikke gemme draftet:', err)
+    }
+  }, [hasUnsavedChanges, workingState, hasLoadedFromCloud])
+
+  /** Puts a found draft back into the editor, to be reviewed and then saved. */
+  const restoreDraft = () => {
+    const draft = draftRef.current
+    if (!draft) return
+    setPages(draft.state.pages)
+    setNavigation(draft.state.navigation)
+    setCases(draft.state.cases)
+    setTestimonials(draft.state.testimonials)
+    setCompanyLogos(draft.state.companyLogos)
+    setContactInfo(draft.state.contactInfo)
+    // Left on screen deliberately. Restoring does not commit anything, and the
+    // offer is still true of the work now sitting in the editor.
+  }
+
+  const discardDraft = () => {
+    draftRef.current = null
+    setPendingDraft(null)
+    try {
+      localStorage.removeItem(DRAFT_KEY)
+    } catch {}
+  }
+
+  /**
+   * Refuses to lose unsaved work.
+   *
+   * A beforeunload listener covers a refresh or a closed tab, which the browser
+   * lets us veto. It cannot cover navigating within the admin, so those call
+   * confirmLeave() before they move.
+   */
+  useEffect(() => {
+    if (!hasUnsavedChanges) return
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault()
+      // Required by older browsers; modern ones show their own wording.
+      e.returnValue = ''
+    }
+    window.addEventListener('beforeunload', warn)
+    return () => window.removeEventListener('beforeunload', warn)
+  }, [hasUnsavedChanges])
+
+  const confirmLeave = () => {
+    if (!hasUnsavedChanges) return true
+    return window.confirm(
+      'Du har ugemte ændringer. Hvis du forlader, går de tabt. Vil du fortsætte alligevel?'
+    )
+  }
+
+  const save = async (): Promise<boolean> => {
+    if (saving) return false
+    setSaving(true)
+    setSaveError(null)
+
+    try {
+      const previous = baseline ? (JSON.parse(baseline) as Snapshot) : null
+
+      // Every save helper is an upsert, so a row that has disappeared from the
+      // working copy would simply be left behind in the table and come back on
+      // the next load. What went missing is therefore worked out from the
+      // baseline and deleted explicitly.
+      const gonePages = previous
+        ? previous.pages
+            .filter(p => !pages.some(x => x.slug === p.slug))
+            .map(p => p.slug)
+        : []
+      const goneNav = previous
+        ? navIds(previous.navigation).filter(id => !navIds(navigation).includes(id))
+        : []
+      const goneCases = previous
+        ? previous.cases.filter(c => !cases.some(x => x.id === c.id)).map(c => c.id)
+        : []
+      const goneTestimonials = previous
+        ? previous.testimonials.filter(t => !testimonials.some(x => x.id === t.id)).map(t => t.id)
+        : []
+      const goneLogos = previous
+        ? previous.companyLogos.filter(l => !companyLogos.some(x => x.id === l.id)).map(l => l.id)
+        : []
+
+      // Deletes first: a page and its descendants both have to go, and doing it
+      // before the upserts means a rename cannot leave the old row behind.
+      if (gonePages.length) await deleteCMSPages(gonePages)
+      for (const id of goneNav) await deleteCMSNavigation(id)
+      for (const id of goneCases) await deleteCMSCase(id)
+      for (const id of goneTestimonials) await deleteCMSTestimonial(id)
+      for (const id of goneLogos) await deleteCMSCompanyLogo(id)
+
+      const results = await Promise.all([
+        saveCMSPages(pages),
+        saveCMSNavigation(navigation),
+        saveCMSContactInfo(contactInfo),
+        saveCMSCases(cases),
+        saveCMSTestimonials(testimonials),
+        saveCMSCompanyLogos(companyLogos),
+      ])
+
+      if (results.some(ok => !ok)) {
+        // The deletes above have already happened, so this is a partial save and
+        // the baseline must not move - saying otherwise would discard the record
+        // of what is now missing from the table.
+        setSaveError('Noget af ændringerne kunne ikke gemmes. Prøv igen.')
+        return false
+      }
+
+      // localStorage mirrors the site, not the editor. Writing it here rather than
+      // on every change is what stops an unsaved edit from coming back looking
+      // saved after a reload.
+      cacheLocally({ pages, navigation, cases, testimonials, companyLogos, contactInfo })
+
+      // Committed, so the draft has nothing left to protect. Cleared here rather
+      // than left for the effect above, so a restored-then-saved draft cannot
+      // come back as a second offer.
+      localStorage.removeItem(DRAFT_KEY)
+      draftRef.current = null
+      setPendingDraft(null)
+
+      setBaseline(working)
+      return true
+    } catch (err: any) {
+      setSaveError(err?.message || 'Der opstod en fejl')
+      return false
+    } finally {
+      setSaving(false)
+    }
+  }
 
   const login = async (email: string, password: string): Promise<{ success: boolean; error?: string }> => {
     // Supabase rejects on network failure rather than returning an error object,
@@ -569,14 +889,17 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       title,
       parentSlug,
       meta: { title: `${title} | StayMain`, description: '' },
+      // Seeded with the page title so the hero is not a blank full-height screen
+      // waiting to be written. The default is a medium-impact heading: a new
+      // page is usually a content page, not a landing page.
       blocks: [
+        { id: generateId('hero'), type: 'hero', content: { ...defaultHeroContent(title), impact: 'medium' } },
         { id: generateId('text'), type: 'text', content: { title, body: '' } }
       ]
     }
     
     setPages(prev => {
       const newPages = [...prev, newPage]
-      saveCMSPages(newPages)
       return newPages
     })
     return newPage
@@ -588,12 +911,12 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       // Slugs are cumulative, so descendants are identified by prefix. Filtering
       // on parentSlug alone only caught direct children and orphaned the rest.
       const isSelfOrDescendant = (p: CMSPage) => p.slug === slug || p.slug.startsWith(`${slug}/`)
-      const removed = prev.filter(isSelfOrDescendant).map(p => p.slug)
-      const newPages = prev.filter(p => !isSelfOrDescendant(p))
-      deleteCMSPages(removed)
-      saveCMSPages(newPages)
-      return newPages
+      return prev.filter(p => !isSelfOrDescendant(p))
     })
+    // No delete here. saveCMSPages is an upsert, so dropping a page from state
+    // would leave its row in the table and it would come back on the next load.
+    // save() works out what disappeared by comparing against the baseline and
+    // deletes those rows.
   }
 
   const updatePageDetails = (oldSlug: string, title: string, newSlug: string, parentSlug?: string): boolean => {
@@ -619,7 +942,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         if (nextSlug === p.slug && nextParent === p.parentSlug) return p
         return { ...p, slug: nextSlug, parentSlug: nextParent, ...(p.slug === oldSlug ? { title } : {}) }
       })
-      saveCMSPages(newPages)
       return newPages
     })
 
@@ -650,7 +972,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
           }
         })
       const newNav = rewriteNav(prev)
-      saveCMSNavigation(newNav)
       return newNav
     })
 
@@ -660,7 +981,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const updatePage = (slug: string, blocks: CMSBlock[]) => {
     setPages(prev => {
       const newPages = prev.map(p => p.slug === slug ? { ...p, blocks } : p)
-      saveCMSPages(newPages)
       return newPages
     })
   }
@@ -670,18 +990,18 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       const newPages = prev.map(p => 
         p.slug === slug ? { ...p, meta: { ...p.meta, ...meta } } : p
       )
-      saveCMSPages(newPages)
       return newPages
     })
   }
 
   const addBlock = (pageSlug: string, block: CMSBlock, index?: number) => {
     setPages(prev => {
-      const newPages = prev.map(p => {
-        if (p.slug === pageSlug) {
+      const newPages = prev.map(p => {        if (p.slug === pageSlug) {
           const newBlocks = [...p.blocks]
+          // Never in front of the hero, whatever index the caller asked for.
+          const floor = p.blocks[0]?.type === 'hero' ? 1 : 0
           if (index !== undefined) {
-            newBlocks.splice(index, 0, block)
+            newBlocks.splice(Math.max(index, floor), 0, block)
           } else {
             newBlocks.push(block)
           }
@@ -689,7 +1009,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         }
         return p
       })
-      saveCMSPages(newPages)
       return newPages
     })
   }
@@ -698,11 +1017,15 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     setPages(prev => {
       const newPages = prev.map(p => {
         if (p.slug === pageSlug) {
+          // The hero is the one block a page cannot do without, so this refuses
+          // rather than leaving the page to open on whatever came next. The
+          // admin hides the control; this is what stops it being deleted by
+          // anything else that can reach the block list.
+          if (p.blocks.some(b => b.id === blockId && b.type === 'hero')) return p
           return { ...p, blocks: p.blocks.filter(b => b.id !== blockId) }
         }
         return p
       })
-      saveCMSPages(newPages)
       return newPages
     })
   }
@@ -711,6 +1034,11 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     setPages(prev => {
       const newPages = prev.map(p => {
         if (p.slug === pageSlug) {
+          // Indices are into the whole array, and the hero owns index 0. The
+          // outline lists only the blocks after it, so the admin adds one to
+          // each index before calling in; a 0 reaching here is a caller that
+          // has not, and moving it would put the hero in the middle of the page.
+          if (p.blocks[0]?.type === 'hero' && (fromIndex === 0 || toIndex === 0)) return p
           // splice(-1, 1) removes the *last* element, so an out-of-range
           // fromIndex silently relocated the wrong block.
           if (fromIndex < 0 || fromIndex >= p.blocks.length) return p
@@ -723,7 +1051,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         }
         return p
       })
-      saveCMSPages(newPages)
       return newPages
     })
   }
@@ -741,13 +1068,11 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         }
         return p
       })
-      saveCMSPages(newPages)
       return newPages
     })
   }
 
   const updateNavigation = (nav: NavItem[]) => {
-    saveCMSNavigation(nav)
     setNavigation(nav)
   }
 
@@ -760,7 +1085,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
     setNavigation(prev => {
       if (!parentNavId) {
         const newNav = [...prev, normalizedItem]
-        saveCMSNavigation(newNav)
         return newNav
       }
 
@@ -782,18 +1106,12 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         })
 
       const newNav = addToParent(prev)
-      saveCMSNavigation(newNav)
       return newNav
     })
   }
 
   const removeNavItem = (itemId: string) => {
-    setNavigation(prev => {
-      const newNav = prev.filter(item => item.id !== itemId)
-      deleteCMSNavigation(itemId)
-      saveCMSNavigation(newNav)
-      return newNav
-    })
+    setNavigation(prev => prev.filter(item => item.id !== itemId))
   }
 
   /**
@@ -805,7 +1123,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
    * nesting stale.
    */
   const setNavLayout = (nav: NavItem[]) => {
-    saveCMSNavigation(nav)
     setNavigation(nav)
   }
 
@@ -824,7 +1141,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       const newNav = [...prev]
       const [removed] = newNav.splice(fromIndex, 1)
       newNav.splice(toIndex, 0, removed)
-      saveCMSNavigation(newNav)
       return newNav
     })
   }
@@ -839,7 +1155,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       const topLevelIndex = prev.findIndex(i => i.id === itemId)
       if (topLevelIndex !== -1) {
         const newNav = prev.map(item => item.id === itemId ? { ...item, ...normalizedUpdates } : item)
-        saveCMSNavigation(newNav)
         return newNav
       }
       
@@ -869,7 +1184,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         }
         return item
       })
-      saveCMSNavigation(newNav)
       return newNav
     })
   }
@@ -896,7 +1210,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         })
 
       const newNav = removeFrom(prev)
-      saveCMSNavigation(newNav)
       return newNav
     })
   }
@@ -994,7 +1307,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         // level skips href normalisation and can end up with href: undefined.
         newNav = [...newNav, { ...normalizedChild, parentNavId: undefined }]
       }
-      saveCMSNavigation(newNav)
       return newNav
     })
   }
@@ -1013,7 +1325,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         }
         return item
       })
-      saveCMSNavigation(newNav)
       return newNav
     })
   }
@@ -1057,7 +1368,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
         return item
       })
 
-      saveCMSNavigation(newNav)
       return newNav
     })
   }
@@ -1065,7 +1375,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const updateContactInfo = (info: Partial<ContactInfo>) => {
     setContactInfo(prev => {
       const newInfo = { ...prev, ...info }
-      saveCMSContactInfo(newInfo)
       return newInfo
     })
   }
@@ -1073,7 +1382,6 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const addCase = (caseItem: Case) => {
     setCases(prev => {
       const newCases = [...prev, caseItem]
-      saveCMSCases(newCases)
       return newCases
     })
   }
@@ -1081,20 +1389,17 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const updateCase = (id: string, updates: Partial<Case>) => {
     setCases(prev => {
       const newCases = prev.map(c => c.id === id ? { ...c, ...updates } : c)
-      saveCMSCases(newCases)
       return newCases
     })
   }
 
   const deleteCase = (id: string) => {
     setCases(prev => prev.filter(c => c.id !== id))
-    deleteCMSCase(id)
   }
 
   const addTestimonial = (testimonial: Testimonial) => {
     setTestimonials(prev => {
       const newTestimonials = [...prev, testimonial]
-      saveCMSTestimonials(newTestimonials)
       return newTestimonials
     })
   }
@@ -1102,20 +1407,17 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const updateTestimonial = (id: string, updates: Partial<Testimonial>) => {
     setTestimonials(prev => {
       const newTestimonials = prev.map(t => t.id === id ? { ...t, ...updates } : t)
-      saveCMSTestimonials(newTestimonials)
       return newTestimonials
     })
   }
 
   const deleteTestimonial = (id: string) => {
     setTestimonials(prev => prev.filter(t => t.id !== id))
-    deleteCMSTestimonial(id)
   }
 
   const addCompanyLogo = (logo: CompanyLogo) => {
     setCompanyLogos(prev => {
       const newLogos = [...prev, logo]
-      saveCMSCompanyLogos(newLogos)
       return newLogos
     })
   }
@@ -1123,14 +1425,12 @@ export function CMSProvider({ children }: { children: ReactNode }) {
   const updateCompanyLogo = (id: string, updates: Partial<CompanyLogo>) => {
     setCompanyLogos(prev => {
       const newLogos = prev.map(l => l.id === id ? { ...l, ...updates } : l)
-      saveCMSCompanyLogos(newLogos)
       return newLogos
     })
   }
 
   const deleteCompanyLogo = (id: string) => {
     setCompanyLogos(prev => prev.filter(l => l.id !== id))
-    deleteCMSCompanyLogo(id)
   }
 
   const generatePassword = (): string => {
@@ -1295,9 +1595,18 @@ export function CMSProvider({ children }: { children: ReactNode }) {
       users,
       cases,
       testimonials,
-      companyLogos,
-      contactInfo,
-      isAuthenticated: !!currentUser,
+        companyLogos,
+        contactInfo,
+        hasUnsavedChanges,
+        saving,
+        saveError,
+        save,
+        pendingDraftAt: pendingDraft,
+        restoreDraft,
+        discardDraft,
+        confirmLeave,
+        isAuthenticated: !!currentUser,
+
       currentUser,
       supabaseReady,
       login,

@@ -29,9 +29,6 @@ async function login(page: Page, path = '/admin/menu') {
 test.describe('sider', () => {
   test('the rail has no pages dropdown', async ({ page }) => {
     await login(page)
-    // A workspace route, not /admin: the library page is a standalone screen
-    // with no rail, and the rail is what this is about.
-    await page.goto('/admin/menu')
     const sider = page.locator('aside').getByRole('button', { name: 'Sider' }).first()
     await expect(sider).toBeVisible({ timeout: 20_000 })
 
@@ -62,6 +59,18 @@ test.describe('sider', () => {
 
     await siderItem.click()
     await page.waitForURL('**/admin/sider', { timeout: 15_000 })
+  })
+
+  testAuth('the library keeps the rail and the save control', async ({ page }) => {
+    await login(page)
+    await page.goto('/admin/sider')
+
+    // It used to be a standalone screen with its own header, so arriving here
+    // dropped the rail and left no way back into the rest of the CMS.
+    await expect(page.locator('aside').first()).toBeVisible({ timeout: 20_000 })
+    await expect(
+      page.locator('aside button[aria-current="page"]:has-text("Sider")')
+    ).toHaveCount(1)
   })
 
   testAuth('the library lists pages and offers to create one', async ({ page }) => {
@@ -102,5 +111,66 @@ test.describe('sider', () => {
     await page.goto(href!)
     await expect(page.locator('aside').first()).toBeVisible({ timeout: 20_000 })
     await expect(page.getByRole('button', { name: /Gem/ })).toBeVisible()
+  })
+})
+
+/**
+ * Every page has a hero, and it is not a row in the outline.
+ *
+ * The hero used to be an ordinary block: added from the picker, dragged, deleted.
+ * All three were reachable, and a page could end up with no H1 at all. These
+ * check the three ways that could come back.
+ */
+test.describe('page hero', () => {
+  testAuth('every page shows a hero panel that cannot be deleted or moved', async ({ page }) => {
+    await login(page)
+    await page.goto('/admin/sider')
+    const first = page.locator('a[href^="/admin/sider/"]').first()
+    await expect(first).toBeVisible({ timeout: 20_000 })
+    await first.click()
+    await expect(page.locator('aside').first()).toBeVisible({ timeout: 20_000 })
+
+    // The panel is above the outline, not in it.
+    const heroPanel = page.getByRole('button', { name: /Hero/ }).first()
+    await expect(heroPanel).toBeVisible()
+
+    // No delete, no drag handle, no reorder arrows. The outline rows have all
+    // three, so their absence here is the assertion.
+    const outline = page.locator('main .admin-spine')
+    await expect(heroPanel.locator('[aria-label^="Slet"]')).toHaveCount(0)
+    await expect(heroPanel.locator('[aria-label^="Flyt"]')).toHaveCount(0)
+    await expect(outline.getByRole('button', { name: /^Hero/ })).toHaveCount(0)
+  })
+
+  testAuth('the component picker does not offer a hero', async ({ page }) => {
+    await login(page)
+    await page.goto('/admin/sider')
+    const first = page.locator('a[href^="/admin/sider/"]').first()
+    await expect(first).toBeVisible({ timeout: 20_000 })
+    await first.click()
+    await expect(page.locator('aside').first()).toBeVisible({ timeout: 20_000 })
+
+    await page.getByText('Tilføj sektion').click()
+    const picker = page.getByRole('heading', { name: 'Vælg komponent' })
+    await expect(picker).toBeVisible({ timeout: 15_000 })
+
+    // Offering it would let somebody put a second hero on the page.
+    await expect(picker.locator('..').getByText('Hero', { exact: true })).toHaveCount(0)
+  })
+
+  testAuth('the hero editor offers three impact levels', async ({ page }) => {
+    await login(page)
+    await page.goto('/admin/sider')
+    const first = page.locator('a[href^="/admin/sider/"]').first()
+    await expect(first).toBeVisible({ timeout: 20_000 })
+    await first.click()
+    await expect(page.locator('aside').first()).toBeVisible({ timeout: 20_000 })
+
+    await page.getByRole('button', { name: /Hero/ }).first().click()
+    await expect(page.getByText('Rediger SEO').or(page.getByText('Hero')).first()).toBeVisible()
+
+    for (const label of ['Høj effekt', 'Mellem effekt', 'Lav effekt']) {
+      await expect(page.getByText(label, { exact: true }).first()).toBeVisible()
+    }
   })
 })

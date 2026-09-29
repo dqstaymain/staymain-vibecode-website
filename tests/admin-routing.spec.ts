@@ -49,12 +49,43 @@ test.describe('admin routing', () => {
     await expect(page.getByRole('link', { name: 'Tilbage til sider' })).toBeVisible()
   })
 
-  testAuth('/admin lands on a real section', async ({ page }) => {
+  testAuth('/admin opens the dashboard at its own URL', async ({ page }) => {
     await login(page)
     await page.goto('/admin')
-    await page.waitForURL(/\/admin\/(sider|generelt|cases|mediebibliotek|menu)/, {
-      timeout: 15_000,
-    })
+
+    // It used to hand off to /admin/sider on mount, so logging in moved you off
+    // the address you asked for. The home is a screen now, not a redirect.
+    await expect(page.locator('aside').first()).toBeVisible({ timeout: 20_000 })
+    await expect(page).toHaveURL(/\/admin$/)
+    await expect(page.getByRole('heading', { name: 'Oversigt' })).toBeVisible()
+    // The rail marks the screen it opened on as current.
+    await expect(
+      page.locator('aside button[aria-current="page"]:has-text("Oversigt")')
+    ).toHaveCount(1)
+  })
+
+  testAuth('the dashboard counts each kind of content', async ({ page }) => {
+    await login(page)
+    await page.goto('/admin')
+
+    // The counts are the point of the screen, so each tile is asserted by the
+    // number next to its label rather than by the label alone.
+    for (const label of ['Sider', 'Cases', 'Kundeudtalelser', 'Firmalogoer', 'Menupunkter']) {
+      await expect(
+        page.locator(`main a:has-text("${label}")`).first()
+      ).toBeVisible({ timeout: 20_000 })
+    }
+  })
+
+  testAuth('the dashboard links each content type to its own screen', async ({ page }) => {
+    await login(page)
+    await page.goto('/admin')
+
+    const sider = page.locator('main a[href="/admin/sider"]').first()
+    await expect(sider).toBeVisible({ timeout: 20_000 })
+    await sider.click()
+    await page.waitForURL('**/admin/sider', { timeout: 15_000 })
+    await expect(page.getByRole('heading', { name: 'Sider' })).toBeVisible()
   })
 
   for (const { segment, label } of SECTIONS) {
@@ -77,8 +108,6 @@ test.describe('admin routing', () => {
 
   testAuth('clicking a rail item navigates to that section URL', async ({ page }) => {
     await login(page)
-    // Start on a route that has the rail. /admin lands on the page library,
-    // which is a standalone screen without one.
     await page.goto('/admin/menu')
     await expect(page.locator('aside').first()).toBeVisible({ timeout: 20_000 })
 

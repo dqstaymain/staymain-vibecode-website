@@ -17,7 +17,6 @@ import {
   Type,
   Settings,
   Eye,
-  ArrowLeft,
   Globe,
   Search,
   Link2,
@@ -46,9 +45,13 @@ import {
   Headphones,
   TriangleAlert,
   PanelTop,
-  Monitor
+  Monitor,
+  LayoutDashboard,
+  Home,
+  // Aliased: `Lock` on its own resolves to the global Navigator Lock API.
+  Lock as LockIcon
 } from 'lucide-react'
-import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo } from '@/lib/cms'
+import { useCMS, CMSBlock, NavItem, Case, Testimonial, CompanyLogo, ContactInfo } from '@/lib/cms'
 import { uploadImage, authHeaders } from '@/lib/supabase'
 import {
   DndContext,
@@ -63,10 +66,28 @@ import {
 import { useDndSensors } from './dnd'
 import {
   ADMIN_SECTIONS,
-  DEFAULT_SECTION,
   sectionHref,
   type AdminSection,
+  type AdminView,
 } from './sections'
+import { Dashboard } from './dashboard'
+import { PageLibrary } from './page-library'
+import {
+  budgetState,
+  budgetLabel,
+  BUDGET_TONE,
+  META_TITLE_LIMIT,
+  META_DESCRIPTION_LIMIT,
+} from './seo-budget'
+import {
+  HERO_IMPACTS,
+  HERO_IMPACT_ORDER,
+  heroImpact,
+  defaultHeroContent,
+  applyHeroImpact,
+  contentBlocks,
+} from '@/lib/hero'
+import { SITE_URL } from '@/lib/site'
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import {
   SortableBlockRow,
@@ -245,42 +266,179 @@ function RailItem({
 }
 
 /**
- * Save control that reports state rather than relying on colour alone, and
- * never sits in a permanently disabled state that looks clickable.
+ * The hero's row in the editor.
+ *
+ * Deliberately not a `SortableBlockRow`. It looks like one so the outline reads
+ * as a single list, but it has no drag handle, no move arrows and no delete
+ * button: every page has a hero, it sits above the sections, and none of those
+ * three things should be possible. The impact level is on the row rather than
+ * buried in the editor, because it is the first thing to decide about a page.
  */
-function SaveButton({
+function HeroPanel({
+  block,
+  isEditing,
+  onOpen,
+}: {
+  block: CMSBlock
+  isEditing: boolean
+  onOpen: () => void
+}) {
+  const impact = heroImpact(block.content)
+  const spec = HERO_IMPACTS[impact]
+
+  return (
+    <div className="mb-4">
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={onOpen}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onOpen()
+          }
+        }}
+        className={cx(
+          'group flex cursor-pointer items-center gap-3 rounded-lg border py-3 pl-3 pr-2 transition-colors',
+          isEditing
+            ? 'border-[var(--accent-line)] bg-[var(--accent-soft)]'
+            : 'border-[var(--hairline)] bg-[var(--surface)] hover:border-[var(--accent)]'
+        )}
+      >
+        {/* Occupies the slot the block number uses, so the hero line up with the
+            numbered rows under it. */}
+        <span className="admin-num w-5 shrink-0 text-right text-[11px] text-[var(--accent)]">
+          H1
+        </span>
+        <span className="shrink-0 text-[var(--accent)]">
+          <Layout size={18} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="admin-eyebrow block">Hero</span>
+          <span className="mt-0.5 block truncate text-[13px] text-[var(--ink-2)]">
+            {block.content?.title || 'Uden titel'}
+          </span>
+        </span>
+        <span className="flex shrink-0 items-center gap-2">
+          <span className="rounded border border-[var(--hairline)] px-2 py-0.5 text-[11px] text-[var(--ink-2)]">
+            {spec.label}
+          </span>
+          <IconButton label="Rediger hero" onClick={onOpen}>
+            <Pencil size={14} />
+          </IconButton>
+        </span>
+      </div>
+      <p className="mt-1.5 flex items-center gap-1.5 text-[11px] text-[var(--ink-3)]">
+        <LockIcon size={11} />
+        Alle sider har en hero. Den kan ikke slettes eller flyttes.
+      </p>
+    </div>
+  )
+}
+
+/**
+ * Offers back a draft from an earlier session.
+ *
+ * The counterpart to making saving explicit: if nothing is written until the
+ * button is pressed, then a closed laptop or a killed tab has to be recoverable,
+ * or the model is a trap rather than a choice. WordPress and Payload both keep a
+ * draft for exactly this, and both ask before putting it back rather than
+ * applying it silently over a site that has moved on since.
+ */
+function DraftRecovery({
+  at,
+  onRestore,
+  onDiscard,
+}: {
+  at: number
+  onRestore: () => void
+  onDiscard: () => void
+}) {
+  const when = new Date(at).toLocaleString('da-DK', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+  })
+
+  return (
+    <div className="border-b border-[var(--warning)] bg-[var(--warning-soft)] px-5 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <p className="flex items-center gap-2 text-[13px] leading-snug text-[var(--ink-2)]">
+          <TriangleAlert size={15} className="shrink-0 text-[var(--warning)]" />
+          <span>
+            Der er ugemte ændringer fra <strong>{when}</strong>. De er ikke gemt på
+            sitet.
+          </span>
+        </p>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={onDiscard}>
+            Forkast
+          </Button>
+          <Button variant="primary" size="sm" onClick={onRestore}>
+            <RefreshCw size={14} />
+            Gendan
+          </Button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * The one control that writes to the site.
+ *
+ * Only rendered when there is something unsaved, which is what it takes to stop
+ * it being a permanently visible button that implies the rest of the admin works
+ * this way. It sits in the header because the edits it commits can be made on any
+ * screen - a block reorder, a menu drag, a contact field - so there is no one
+ * screen that owns it.
+ */
+function SaveChanges({
+  saving,
   saved,
-  dirty,
+  error,
   onSave,
 }: {
+  saving: boolean
   saved: boolean
-  dirty: boolean
+  error: string | null
   onSave: () => void
 }) {
-  const idle = !saved && !dirty
   return (
     <div className="flex items-center gap-2">
-      <span
-        aria-live="polite"
-        className={`hidden text-[13px] sm:inline ${dirty ? 'text-[var(--ink-2)]' : 'text-transparent'}`}
-      >
-        {dirty ? 'Ikke gemt' : 'placeholder'}
+      {/* Announced rather than shown: "Gemt" lasts two seconds, which is not long
+          to catch in the corner of your eye. */}
+      <span aria-live="polite" className="sr-only">
+        {error ? error : saved ? 'Ændringer gemt' : ''}
       </span>
+      {/* A failure has to be seen, not just announced. It was on a tooltip and in
+          a screen-reader-only span, which means the person who pressed save and
+          watched nothing happen was the one person never told why. */}
+      {error && (
+        <span className="flex items-center gap-1.5 text-[13px] text-[var(--danger)]">
+          <TriangleAlert size={14} className="shrink-0" />
+          {error}
+        </span>
+      )}
       <Button
         onClick={onSave}
-        variant={dirty || saved ? 'primary' : 'secondary'}
-        disabled={idle}
+        variant={error ? 'secondary' : 'primary'}
+        disabled={saving}
         size="sm"
       >
         <Save size={15} />
-        {saved ? 'Gemt' : 'Gem ændringer'}
+        {saving ? 'Gemmer…' : saved ? 'Gemt' : error ? 'Prøv igen' : 'Gem ændringer'}
       </Button>
     </div>
   )
 }
 
+/**
+ * The sections that can be added to a page.
+ *
+ * Hero is not in the list: every page has one, pinned above these, so offering it
+ * here would let somebody put a second one on a page.
+ */
 const blockTypes = [
-  { type: 'hero', label: 'Hero', icon: Layout, description: 'Stor header med titel og CTA' },
   { type: 'text', label: 'Tekst', icon: Type, description: 'Titel og tekstafsnit' },
   { type: 'contentImage', label: 'Indhold + Billede', icon: ImageIcon, description: '2 kolonner med tekst og billede' },
   { type: 'services', label: 'Services', icon: Settings, description: 'Vis ydelser i grid' },
@@ -375,23 +533,24 @@ const SECTION_ICONS: Record<AdminSection, React.ReactNode> = {
 /**
  * The admin shell, shared by every route.
  *
- * Rendered by `/admin/[section]` and by `/admin/sider/[...slug]`, so every
- * screen has a URL that can be linked to and so Back works. The props say which
- * screen to show; the component no longer decides that for itself.
+ * Rendered by `/admin`, by `/admin/sider`, by `/admin/[section]` and by
+ * `/admin/sider/[...slug]`, so every screen has a URL that can be linked to and
+ * Back works. The props say which screen to show; the component no longer decides
+ * that for itself.
  */
 export function AdminWorkspace({
   initialSlug,
-  initialView = DEFAULT_SECTION,
+  initialView = 'home',
   startCreatingPage,
 }: {
   /** Page being edited. Present on /admin/sider/[...slug]. */
   initialSlug?: string
-  /** Section being shown. Present on /admin/[section]. */
-  initialView?: AdminSection
+  /** Screen being shown. `home` is the dashboard at /admin. */
+  initialView?: AdminView
   /** Opens the create-page dialog on arrival, for the /admin/sider/ny route. */
   startCreatingPage?: boolean
 } = {}) {
-  const { pages, navigation, users, contactInfo, isAuthenticated, currentUser, supabaseReady, logout, createPage, updatePageDetails, deletePage, addBlock, removeBlock, moveBlock, updateBlockContent, updatePageMeta, updateNavItem, addNavItem, removeNavItem, updateNavigation, moveNavItemToParent, convertToDropdown, setNavLayout, orderingPersisted, addUser, updateUser, updateUserPassword, deleteUser, generatePassword, fetchUsers, updateContactInfo, cases, testimonials, companyLogos, addCase, updateCase, deleteCase, addTestimonial, updateTestimonial, deleteTestimonial, addCompanyLogo, updateCompanyLogo, deleteCompanyLogo } = useCMS()
+  const { pages, navigation, users, contactInfo, isAuthenticated, currentUser, supabaseReady, logout, createPage, updatePageDetails, deletePage, addBlock, removeBlock, moveBlock, updateBlockContent, updatePageMeta, updateNavItem, addNavItem, removeNavItem, updateNavigation, moveNavItemToParent, convertToDropdown, setNavLayout, orderingPersisted, addUser, updateUser, updateUserPassword, deleteUser, generatePassword, fetchUsers, updateContactInfo, cases, testimonials, companyLogos, addCase, updateCase, deleteCase, addTestimonial, updateTestimonial, deleteTestimonial, addCompanyLogo, updateCompanyLogo, deleteCompanyLogo, hasUnsavedChanges, saving, saveError, save, confirmLeave, pendingDraftAt, restoreDraft, discardDraft } = useCMS()
   
   useEffect(() => {
     if (supabaseReady && users.length === 0) {
@@ -411,7 +570,6 @@ export function AdminWorkspace({
   const [editingNavItem, setEditingNavItem] = useState<string | null>(null)
   /** Outcome of the drag in progress, used to drive the row indicator. */
   const [navDrop, setNavDrop] = useState<NavDropPlan>(NO_DROP)
-  const [saved, setSaved] = useState(false)
   const [isReady, setIsReady] = useState(false)
   const [showCreatePage, setShowCreatePage] = useState(false)
   const [newPageTitle, setNewPageTitle] = useState('')
@@ -454,7 +612,6 @@ export function AdminWorkspace({
     setShowMediaPicker(true)
   }, [])
   const [uploadingLogo, setUploadingLogo] = useState(false)
-  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false)
   const [uploadingFavicon, setUploadingFavicon] = useState(false)
   const [showSupport, setShowSupport] = useState(false)
   const [blockDeleteConfirm, setBlockDeleteConfirm] = useState<{ pageSlug: string; blockId: string } | null>(null)
@@ -483,28 +640,16 @@ export function AdminWorkspace({
     }
   }
 
-  const updateContactForm = (updates: Partial<typeof contactForm>) => {
-    setContactForm(prev => ({ ...prev, ...updates }))
-    setHasUnsavedChanges(true)
-  }
-
-  const [contactForm, setContactForm] = useState({
-    companyName: '',
-    email: '',
-    phone: '',
-    address: '',
-    cvr: '',
-    logo: '',
-    favicon: '',
-    headerButtonText: '',
-    footerDescription: '',
-    footerCol2Title: '',
-    footerCol3Title: '',
-    footerCol4Title: '',
-    footerCol2Links: [] as FooterLink[],
-    footerCol3Links: [] as FooterLink[],
-    footerCol4Links: [] as FooterLink[]
-  })
+  /**
+   * The contact screens edit the working copy like everything else.
+   *
+   * They used to keep a parallel `contactForm` that only reached the site when
+   * their own save button was pressed, and `goTo` reloaded that copy from
+   * `contactInfo` on every arrival - so typing, clicking another rail item and
+   * clicking back silently threw the edits away. Writing straight into the draft
+   * removes the second copy, and with it the reload and the loss.
+   */
+  const updateContactForm = (updates: Partial<ContactInfo>) => updateContactInfo(updates)
 
   useEffect(() => {
     // Wait for the session check to finish before deciding. `isAuthenticated` is
@@ -524,12 +669,27 @@ export function AdminWorkspace({
   // hook may sit after an early return.
   const currentPage = pages.find(p => p.slug === selectedPage)
 
-  // Bumped whenever the saved blocks change, so the preview iframe reloads and
-  // shows the committed result rather than a stale document.
+  // The hero is pinned above the outline: it is not a row to drag, reorder or
+  // delete, so it never enters the sortable list. Indices below are into
+  // `editableBlocks` and are shifted by one before they reach moveBlock, whose
+  // indices are into the whole array where the hero owns slot 0.
+  const heroBlock = currentPage?.blocks.find(b => b.type === 'hero')
+  const editableBlocks = currentPage ? contentBlocks(currentPage.blocks) : []
+
+  /**
+   * The preview iframe loads the real public page, so it shows what the site
+   * has, not the draft. Reloading it on every block edit therefore reloaded a
+   * document that had not changed yet - the frame is a full page load each time.
+   *
+   * It is driven by whether there is something unsaved instead: the preview is
+   * stale exactly while the draft differs from the site, so it refreshes when
+   * that goes away rather than on every keystroke.
+   */
   useEffect(() => {
     if (!isAuthenticated || !isReady) return
+    if (hasUnsavedChanges) return
     setPreviewRevision(r => r + 1)
-  }, [currentPage?.blocks, isAuthenticated, isReady])
+  }, [hasUnsavedChanges, isAuthenticated, isReady])
 
   // Sensors are hooks, so they have to be created before the auth gate below.
   // Declaring them after it made the hook count depend on authentication, which
@@ -561,14 +721,25 @@ export function AdminWorkspace({
     setShowCreatePage(true)
   }, [startCreatingPage])
 
-  const [view, setView] = useState<AdminSection>(initialView)
+  const [view, setView] = useState<AdminView>(initialView)
   // The route owns which screen is shown, so client navigation has to follow.
   useEffect(() => {
     setView(initialView)
   }, [initialView])
 
-  /** Section in view, plus a page editor when one is open. */
+  /** Screen in view, plus a page editor when one is open. */
   const activeView = initialSlug ? 'page' : view
+
+  /**
+   * The brief "Gemt" that follows a successful save.
+   *
+   * Above the auth gate with the other hooks, which is the only place it can go:
+   * a useState below an early return makes the hook count depend on whether
+   * anybody is signed in, and React reports that as a change in the order of
+   * hooks. Two other hooks in this file are anchored here for the same reason,
+   * and this one arrived third.
+   */
+  const [savedFlash, setSavedFlash] = useState(false)
 
   if (!isAuthenticated || !isReady) {
     return (
@@ -579,31 +750,24 @@ export function AdminWorkspace({
   }
 
   const handleLogout = () => {
+    // Signing out is the least recoverable way to leave: the session is gone and
+    // there is no going back to the draft.
+    if (!confirmLeave()) return
     logout()
     router.push('/')
   }
 
-  /** Moving between sections is a navigation, so each one gets a URL. */
+  /**
+   * Moving between sections is a navigation, so each one gets a URL.
+   *
+   * Not guarded, unlike logout. The working copy lives in the CMS context above
+   * this component, so a client-side navigation between admin sections carries it
+   * over untouched - there is nothing to lose here, and a confirm on every rail
+   * click would only teach the reader to dismiss a dialog that means nothing.
+   */
   const goTo = (next: AdminSection) => {
     setEditingNavItem(null)
     setEditingBlock(null)
-    // Both contact screens edit the same record, so each arrival reloads the
-    // form rather than showing a stale copy left over from the other screen.
-    if (next === 'generelt' || next === 'header-footer') {
-      setContactForm({
-        ...contactInfo,
-        logo: contactInfo.logo || '',
-        favicon: contactInfo.favicon || '',
-        headerButtonText: contactInfo.headerButtonText || '',
-        footerDescription: contactInfo.footerDescription || '',
-        footerCol2Title: contactInfo.footerCol2Title || '',
-        footerCol3Title: contactInfo.footerCol3Title || '',
-        footerCol4Title: contactInfo.footerCol4Title || '',
-        footerCol2Links: contactInfo.footerCol2Links || [],
-        footerCol3Links: contactInfo.footerCol3Links || [],
-        footerCol4Links: contactInfo.footerCol4Links || [],
-      })
-    }
     router.push(sectionHref(next))
   }
 
@@ -678,7 +842,7 @@ export function AdminWorkspace({
       setBlockDrop(null)
       return
     }
-    const target = resolveBlockDrop(active, over, currentPage.blocks)
+    const target = resolveBlockDrop(active, over, editableBlocks)
     setBlockDrop(target ? { overId: String(over.id), side: target.side } : null)
   }
 
@@ -688,15 +852,16 @@ export function AdminWorkspace({
     setBlockDrop(null)
     if (!over || !selectedPage || !currentPage) return
 
-    const target = resolveBlockDrop(active, over, currentPage.blocks)
+    const target = resolveBlockDrop(active, over, editableBlocks)
     if (!target) return
 
-    moveBlock(selectedPage, target.from, target.to)
+    // +1 for the hero sitting in front of the list being dragged.
+    moveBlock(selectedPage, target.from + 1, target.to + 1)
   }
 
   const getDefaultContent = (type: CMSBlock['type']): Record<string, any> => {
     switch (type) {
-      case 'hero': return { title: 'Ny hero sektion', subtitle: 'Beskrivelse...' }
+      case 'hero': return defaultHeroContent()
       case 'text': return { title: 'Ny overskrift', body: 'Tekst indhold...' }
       case 'contentImage': return { title: 'Ny overskrift', description: 'Beskrivelse her...', buttonText: 'Læs mere', layout: 'image-left' }
       case 'cta': return { title: 'Klar til at komme i gang?', buttonText: 'Kontakt os' }
@@ -730,15 +895,17 @@ export function AdminWorkspace({
     setShowComponentPicker(false)
   }
 
-  const handleSave = () => {
-    // Both settings screens edit the same contact record, so the save button
-    // acts on whichever one is showing rather than on a stored flag.
-    if (view === 'generelt' || view === 'header-footer') {
-      updateContactInfo(contactForm)
-    }
-    setHasUnsavedChanges(false)
-    setSaved(true)
-    setTimeout(() => setSaved(false), 2000)
+  /**
+   * Presses the one save. The write is the context's, because it has to be the
+   * only one: it works out what disappeared as well as what changed, and
+   * re-baselines afterwards. All this adds is the "Gemt", since a save that gives
+   * no feedback is indistinguishable from one that did nothing.
+   */
+  const handleSave = async () => {
+    const ok = await save()
+    if (!ok) return
+    setSavedFlash(true)
+    setTimeout(() => setSavedFlash(false), 2000)
   }
 
   const getBlockIcon = (type: string) => {
@@ -759,18 +926,29 @@ export function AdminWorkspace({
       <header className="sticky top-0 z-50 border-b border-[var(--hairline)] bg-[var(--surface)]">
         <div className="flex h-14 items-center justify-between gap-4 px-5">
           <div className="flex min-w-0 items-center gap-3">
-            <Link
-              href="/"
-              className="inline-flex h-8 w-8 items-center justify-center rounded-md text-[var(--ink-3)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
-              title="Tilbage til sitet"
-              aria-label="Tilbage til sitet"
-            >
-              <ArrowLeft size={16} />
-            </Link>
             <div className="flex items-baseline gap-2.5">
               <span className="text-sm font-semibold tracking-tight">StayMain</span>
               <span className="admin-eyebrow">CMS</span>
             </div>
+            {/* The way out to the site itself.
+                A new tab, because leaving the admin this way is looking at
+                something else rather than finishing a job here - and the editor
+                holds unsaved work that a same-tab navigation would quietly
+                throw away. A plain anchor rather than Link, so the public site's
+                bundle is not prefetched on every admin page load for a link most
+                editors never follow.
+                noopener because target=_blank hands the new page a reference back
+                to this one otherwise. */}
+            <a
+              href="/"
+              target="_blank"
+              rel="noopener noreferrer"
+              title="Åbn sitet i en ny fane"
+              aria-label="Åbn sitet i en ny fane"
+              className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--ink-3)] transition-colors hover:bg-[var(--surface-hover)] hover:text-[var(--ink)]"
+            >
+              <Home size={16} />
+            </a>
           </div>
 
           <div className="flex items-center gap-2">
@@ -806,23 +984,46 @@ export function AdminWorkspace({
               <LogOut size={15} />
             </Button>
 
-            <SaveButton
-              saved={saved}
-              dirty={hasUnsavedChanges}
-              onSave={handleSave}
-            />
+            {/* Only when there is something to save. Rendered unconditionally it
+                is a control that sits disabled on a clean screen and invites the
+                reader to wonder what it does. */}
+            {hasUnsavedChanges && (
+              <SaveChanges
+                saving={saving}
+                saved={savedFlash}
+                error={saveError}
+                onSave={handleSave}
+              />
+            )}
           </div>
         </div>
       </header>
 
+      {pendingDraftAt !== null && (
+        <DraftRecovery
+          at={pendingDraftAt}
+          onRestore={restoreDraft}
+          onDiscard={discardDraft}
+        />
+      )}
+
       <div className="flex h-[calc(100vh-3.5rem)]">
         <aside className="hidden w-[13rem] shrink-0 flex-col overflow-y-auto border-r border-[var(--hairline)] bg-[var(--surface)] lg:flex">
           <div className="flex-1 space-y-6 px-3 py-4">
+            {/* The dashboard. Not part of the Indhold group: it is not a kind of
+                content, it is the way back to looking at all of it. */}
+            <RailItem
+              icon={<LayoutDashboard size={15} />}
+              label="Oversigt"
+              active={activeView === 'home'}
+              onClick={() => router.push('/admin')}
+            />
+
             <RailGroup label="Indhold">
               <RailItem
                 icon={<FileText size={15} />}
                 label="Sider"
-                active={activeView === 'page'}
+                active={activeView === 'sider' || activeView === 'page'}
                 onClick={() => router.push('/admin/sider')}
                 count={pages.length}
               />
@@ -981,7 +1182,7 @@ export function AdminWorkspace({
                     <Field label="Virksomhedsnavn" htmlFor="cf-company">
                       <Input
                         id="cf-company"
-                        value={contactForm.companyName}
+                        value={contactInfo.companyName}
                         onChange={e => updateContactForm({ companyName: e.target.value })}
                       />
                     </Field>
@@ -990,7 +1191,7 @@ export function AdminWorkspace({
                       <Input
                         id="cf-email"
                         type="email"
-                        value={contactForm.email}
+                        value={contactInfo.email}
                         onChange={e => updateContactForm({ email: e.target.value })}
                       />
                     </Field>
@@ -999,7 +1200,7 @@ export function AdminWorkspace({
                       <Input
                         id="cf-phone"
                         type="tel"
-                        value={contactForm.phone}
+                        value={contactInfo.phone}
                         onChange={e => updateContactForm({ phone: e.target.value })}
                       />
                     </Field>
@@ -1007,7 +1208,7 @@ export function AdminWorkspace({
                     <Field label="CVR-nummer" htmlFor="cf-cvr">
                       <Input
                         id="cf-cvr"
-                        value={contactForm.cvr}
+                        value={contactInfo.cvr}
                         onChange={e => updateContactForm({ cvr: e.target.value })}
                       />
                     </Field>
@@ -1015,7 +1216,7 @@ export function AdminWorkspace({
                     <Field label="Adresse" htmlFor="cf-address" className="sm:col-span-2">
                       <Input
                         id="cf-address"
-                        value={contactForm.address}
+                        value={contactInfo.address}
                         onChange={e => updateContactForm({ address: e.target.value })}
                       />
                     </Field>
@@ -1027,7 +1228,7 @@ export function AdminWorkspace({
                     id="cf-logo"
                     label="Logo"
                     hint="Vises i footeren. Anbefalet: gennemsigtig PNG."
-                    value={contactForm.logo}
+                    value={contactInfo.logo}
                     previewClass="h-20"
                     uploading={uploadingLogo}
                     onOpenLibrary={handleOpenLogoPicker}
@@ -1044,7 +1245,7 @@ export function AdminWorkspace({
                     id="cf-favicon"
                     label="Favicon"
                     hint="Vises i browserens fanne. 32×32 px eller større."
-                    value={contactForm.favicon}
+                    value={contactInfo.favicon}
                     previewClass="h-12 w-12"
                     uploading={uploadingFavicon}
                     onOpenLibrary={handleOpenFaviconPicker}
@@ -1072,7 +1273,7 @@ export function AdminWorkspace({
                         <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Knap tekst</label>
                         <input
                           type="text"
-                          value={contactForm.headerButtonText}
+                          value={contactInfo.headerButtonText}
                           onChange={e => updateContactForm({ headerButtonText: e.target.value })}
                           className="admin-input"
                         />
@@ -1087,7 +1288,7 @@ export function AdminWorkspace({
                         <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Beskrivelse</label>
                         <input
                           type="text"
-                          value={contactForm.footerDescription}
+                          value={contactInfo.footerDescription}
                           onChange={e => updateContactForm({ footerDescription: e.target.value })}
                           className="admin-input"
                         />
@@ -1102,7 +1303,7 @@ export function AdminWorkspace({
                         <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Overskrift</label>
                         <input
                           type="text"
-                          value={contactForm.footerCol2Title}
+                          value={contactInfo.footerCol2Title}
                           onChange={e => updateContactForm({ footerCol2Title: e.target.value })}
                           className="admin-input px-3 py-2 text-sm"
                         />
@@ -1110,14 +1311,14 @@ export function AdminWorkspace({
                       <div>
                         <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Links</label>
                         <div className="space-y-2">
-                          {(contactForm.footerCol2Links || []).map((link, index) => (
+                          {(contactInfo.footerCol2Links || []).map((link, index) => (
                             <div key={link.id} className="flex items-center gap-2">
                               <div className="flex-1 grid grid-cols-2 gap-2">
                                 <input
                                   type="text"
                                   value={link.label}
                                   onChange={e => {
-                                    const newLinks = [...(contactForm.footerCol2Links || [])]
+                                    const newLinks = [...(contactInfo.footerCol2Links || [])]
                                     newLinks[index] = { ...newLinks[index], label: e.target.value }
                                     updateContactForm({ footerCol2Links: newLinks })
                                   }}
@@ -1128,7 +1329,7 @@ export function AdminWorkspace({
                                   type="text"
                                   value={link.href}
                                   onChange={e => {
-                                    const newLinks = [...(contactForm.footerCol2Links || [])]
+                                    const newLinks = [...(contactInfo.footerCol2Links || [])]
                                     newLinks[index] = { ...newLinks[index], href: e.target.value }
                                     updateContactForm({ footerCol2Links: newLinks })
                                   }}
@@ -1138,7 +1339,7 @@ export function AdminWorkspace({
                               </div>
                               <button
                                 onClick={() => {
-                                  const newLinks = (contactForm.footerCol2Links || []).filter((_, i) => i !== index)
+                                  const newLinks = (contactInfo.footerCol2Links || []).filter((_, i) => i !== index)
                                   updateContactForm({ footerCol2Links: newLinks })
                                 }}
                                 className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
@@ -1154,7 +1355,7 @@ export function AdminWorkspace({
                                 label: 'Ny link',
                                 href: '#'
                               }
-                              updateContactForm({ footerCol2Links: [...(contactForm.footerCol2Links || []), newLink] })
+                              updateContactForm({ footerCol2Links: [...(contactInfo.footerCol2Links || []), newLink] })
                             }}
                             className="text-[13px] font-medium text-[var(--accent)] transition-opacity hover:opacity-75"
                           >
@@ -1172,7 +1373,7 @@ export function AdminWorkspace({
                         <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Overskrift</label>
                         <input
                           type="text"
-                          value={contactForm.footerCol3Title}
+                          value={contactInfo.footerCol3Title}
                           onChange={e => updateContactForm({ footerCol3Title: e.target.value })}
                           className="admin-input px-3 py-2 text-sm"
                         />
@@ -1180,14 +1381,14 @@ export function AdminWorkspace({
                       <div>
                         <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Links</label>
                         <div className="space-y-2">
-                          {(contactForm.footerCol3Links || []).map((link, index) => (
+                          {(contactInfo.footerCol3Links || []).map((link, index) => (
                             <div key={link.id} className="flex items-center gap-2">
                               <div className="flex-1 grid grid-cols-2 gap-2">
                                 <input
                                   type="text"
                                   value={link.label}
                                   onChange={e => {
-                                    const newLinks = [...(contactForm.footerCol3Links || [])]
+                                    const newLinks = [...(contactInfo.footerCol3Links || [])]
                                     newLinks[index] = { ...newLinks[index], label: e.target.value }
                                     updateContactForm({ footerCol3Links: newLinks })
                                   }}
@@ -1198,7 +1399,7 @@ export function AdminWorkspace({
                                   type="text"
                                   value={link.href}
                                   onChange={e => {
-                                    const newLinks = [...(contactForm.footerCol3Links || [])]
+                                    const newLinks = [...(contactInfo.footerCol3Links || [])]
                                     newLinks[index] = { ...newLinks[index], href: e.target.value }
                                     updateContactForm({ footerCol3Links: newLinks })
                                   }}
@@ -1208,7 +1409,7 @@ export function AdminWorkspace({
                               </div>
                               <button
                                 onClick={() => {
-                                  const newLinks = (contactForm.footerCol3Links || []).filter((_, i) => i !== index)
+                                  const newLinks = (contactInfo.footerCol3Links || []).filter((_, i) => i !== index)
                                   updateContactForm({ footerCol3Links: newLinks })
                                 }}
                                 className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
@@ -1224,7 +1425,7 @@ export function AdminWorkspace({
                                 label: 'Ny service',
                                 href: '#'
                               }
-                              updateContactForm({ footerCol3Links: [...(contactForm.footerCol3Links || []), newLink] })
+                              updateContactForm({ footerCol3Links: [...(contactInfo.footerCol3Links || []), newLink] })
                             }}
                             className="text-[13px] font-medium text-[var(--accent)] transition-opacity hover:opacity-75"
                           >
@@ -1242,7 +1443,7 @@ export function AdminWorkspace({
                         <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Overskrift</label>
                         <input
                           type="text"
-                          value={contactForm.footerCol4Title}
+                          value={contactInfo.footerCol4Title}
                           onChange={e => updateContactForm({ footerCol4Title: e.target.value })}
                           className="admin-input px-3 py-2 text-sm"
                         />
@@ -1250,14 +1451,14 @@ export function AdminWorkspace({
                       <div>
                         <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Links</label>
                         <div className="space-y-2">
-                          {(contactForm.footerCol4Links || []).map((link, index) => (
+                          {(contactInfo.footerCol4Links || []).map((link, index) => (
                             <div key={link.id} className="flex items-center gap-2">
                               <div className="flex-1 grid grid-cols-2 gap-2">
                                 <input
                                   type="text"
                                   value={link.label}
                                   onChange={e => {
-                                    const newLinks = [...(contactForm.footerCol4Links || [])]
+                                    const newLinks = [...(contactInfo.footerCol4Links || [])]
                                     newLinks[index] = { ...newLinks[index], label: e.target.value }
                                     updateContactForm({ footerCol4Links: newLinks })
                                   }}
@@ -1268,7 +1469,7 @@ export function AdminWorkspace({
                                   type="text"
                                   value={link.href}
                                   onChange={e => {
-                                    const newLinks = [...(contactForm.footerCol4Links || [])]
+                                    const newLinks = [...(contactInfo.footerCol4Links || [])]
                                     newLinks[index] = { ...newLinks[index], href: e.target.value }
                                     updateContactForm({ footerCol4Links: newLinks })
                                   }}
@@ -1278,7 +1479,7 @@ export function AdminWorkspace({
                               </div>
                               <button
                                 onClick={() => {
-                                  const newLinks = (contactForm.footerCol4Links || []).filter((_, i) => i !== index)
+                                  const newLinks = (contactInfo.footerCol4Links || []).filter((_, i) => i !== index)
                                   updateContactForm({ footerCol4Links: newLinks })
                                 }}
                                 className="inline-flex h-6 w-6 items-center justify-center rounded text-[var(--danger)] transition-colors hover:bg-[var(--danger-soft)]"
@@ -1294,7 +1495,7 @@ export function AdminWorkspace({
                                 label: 'Ny link',
                                 href: '#'
                               }
-                              updateContactForm({ footerCol4Links: [...(contactForm.footerCol4Links || []), newLink] })
+                              updateContactForm({ footerCol4Links: [...(contactInfo.footerCol4Links || []), newLink] })
                             }}
                             className="text-[13px] font-medium text-[var(--accent)] transition-opacity hover:opacity-75"
                           >
@@ -1571,12 +1772,28 @@ export function AdminWorkspace({
             </SectionShell>
           )}
 
-          {activeView === null && (
+          {/* The dashboard `/admin` opens on, and the page library `/admin/sider`
+              opens on. Both are drawn from here rather than redirecting to a
+              route of their own, so both keep the rail around them and both sit
+              at the address they were asked for. */}
+          {activeView === 'home' && <Dashboard />}
+
+          {activeView === 'sider' && !currentPage && <PageLibrary />}
+
+          {/* A slug in the URL that matches no page. Left blank it read as a
+              half-loaded editor rather than a wrong address. */}
+          {activeView === 'page' && !currentPage && (
             <div className="flex flex-1 items-center justify-center px-6">
               <EmptyState
                 icon={<Layout size={22} />}
-                title="Vælg en side for at komme i gang"
-                description="Siderne ligger i menuen til venstre. Vælg en side for at se og redigere dens sektioner."
+                title="Siden findes ikke"
+                description="Den kan være slettet, eller have en stavefejl i stien."
+                action={
+                  <Button variant="secondary" onClick={() => router.push('/admin/sider')}>
+                    <FileText size={15} />
+                    Se alle sider
+                  </Button>
+                }
               />
             </div>
           )}
@@ -1634,8 +1851,16 @@ export function AdminWorkspace({
                 >
                   <div className="min-h-0 flex-1 overflow-y-auto px-6 py-6">
                 <div className="mx-auto max-w-3xl">
-                  {/* One DndContext spans the palette and the list, so a palette
-                      chip can be dropped at any gap in the block list. */}
+                  {/* The hero, pinned above the outline. */}
+                  {heroBlock && (
+                    <HeroPanel
+                      block={heroBlock}
+                      isEditing={editingBlock === heroBlock.id}
+                      onOpen={() => setEditingBlock(heroBlock.id)}
+                    />
+                  )}
+
+                  {/* The outline holds only the sections below the hero. */}
                   <DndContext
                     sensors={blockSensors}
                     collisionDetection={closestCenter}
@@ -1648,13 +1873,13 @@ export function AdminWorkspace({
                     }}
                   >
                     <div className="admin-spine space-y-1.5">
-                      <BlockSortableList ids={currentPage.blocks.map(b => b.id)}>
-                        {currentPage.blocks.map((block, index) => (
+                      <BlockSortableList ids={editableBlocks.map(b => b.id)}>
+                        {editableBlocks.map((block, index) => (
                           <SortableBlockRow
                             key={block.id}
                             id={block.id}
                             index={index}
-                            total={currentPage.blocks.length}
+                            total={editableBlocks.length}
                             label={getBlockLabel(block.type)}
                             summary={
                               block.content?.title ||
@@ -1674,7 +1899,8 @@ export function AdminWorkspace({
                                 blockId,
                               })
                             }
-                            onMove={(from, to) => moveBlock(currentPage.slug, from, to)}
+                            // +1 for the hero, which moveBlock indexes past.
+                            onMove={(from, to) => moveBlock(currentPage.slug, from + 1, to + 1)}
                           />
                         ))}
                       </BlockSortableList>
@@ -1693,9 +1919,10 @@ export function AdminWorkspace({
                     </ListEndZone>
                   </DndContext>
 
-                  {currentPage.blocks.length === 0 && (
+                  {editableBlocks.length === 0 && (
                     <p className="mt-3 text-center text-[13px] text-[var(--ink-3)]">
-                      Siden er tom. Klik på &quot;Tilføj sektion&quot; for at komme i gang.
+                      Siden har kun heroen. Klik på &quot;Tilføj sektion&quot; for at
+                      komme i gang.
                     </p>
                   )}
                   </div>
@@ -1703,7 +1930,11 @@ export function AdminWorkspace({
                 </div>
 
                 {showPreview && (
-                  <div className="min-h-0 w-full shrink-0 lg:w-[24rem] xl:w-[28rem]">
+                  /* The preview owns its own width now, so that dragging its
+                     divider resizes the column instead of fighting a fixed
+                     Tailwind width set here. Full width on small screens,
+                     where the outline is hidden anyway. */
+                  <div className="min-h-0 w-full shrink-0 lg:w-auto">
                     <PagePreview slug={currentPage.slug} revision={previewRevision} />
                   </div>
                 )}
@@ -1729,7 +1960,7 @@ export function AdminWorkspace({
                           form?.requestSubmit()
                         }}
                       >
-                        Gem ændringer
+                        Anvend
                       </Button>
                     </>
                   }
@@ -2116,7 +2347,7 @@ export function AdminWorkspace({
             } else if (mediaPickerConfig && mediaPickerConfig.blockId && selectedPage) {
               const blockId = mediaPickerConfig.blockId
               // While the edit panel is open the pick is unsaved work: hand it to
-              // the panel so it commits with "Gem ændringer" like every other field.
+              // the panel so it commits with "Anvend" like every other field.
               if (blockEditRef.current) {
                 blockEditRef.current(mediaPickerConfig.fieldKey, url)
               } else {
@@ -2250,6 +2481,61 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
     <div className="space-y-4">
       {block.type === 'hero' && (
         <>
+          {/* The level comes first: it decides the height, the title size and
+              whether the chevron and stats are there, so choosing it before the
+              copy is the order that avoids redoing the rest. */}
+          <fieldset>
+            <legend className="mb-1.5 text-[13px] font-medium leading-none text-[var(--ink-2)]">
+              Effekt
+            </legend>
+            <div className="grid gap-2">
+              {HERO_IMPACT_ORDER.map(level => {
+                const option = HERO_IMPACTS[level]
+                const selected = heroImpact(localContent) === level
+                return (
+                  <label
+                    key={level}
+                    className={cx(
+                      'flex cursor-pointer items-start gap-3 rounded-lg border px-3.5 py-3 transition-colors',
+                      selected
+                        ? 'border-[var(--accent)] bg-[var(--accent-soft)]'
+                        : 'border-[var(--hairline)] bg-[var(--surface)] hover:border-[var(--accent)]'
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="hero-impact"
+                      className="sr-only"
+                      checked={selected}
+                      onChange={() => setLocalContent(applyHeroImpact(localContent, level))}
+                    />
+                    {/* The dot stands in for the radio input, which is hidden to
+                        keep the whole card clickable. */}
+                    <span
+                      aria-hidden
+                      className={cx(
+                        'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border',
+                        selected
+                          ? 'border-[var(--accent)]'
+                          : 'border-[var(--hairline-strong)]'
+                      )}
+                    >
+                      {selected && <span className="h-2 w-2 rounded-full bg-[var(--accent)]" />}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block text-[13px] font-medium text-[var(--ink)]">
+                        {option.label}
+                      </span>
+                      <span className="mt-0.5 block text-[12px] leading-snug text-[var(--ink-3)]">
+                        {option.description}
+                      </span>
+                    </span>
+                  </label>
+                )
+              })}
+            </div>
+          </fieldset>
+
           <div>
             <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Badge</label>
             <input
@@ -2259,6 +2545,29 @@ function BlockEditModal({ block, onClose, onSave, onOpenMediaPicker, updateLocal
               className="admin-input"
               placeholder="f.eks. Webbureau i Danmark"
             />
+          </div>
+          <div>
+            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Kompetencer</label>
+            {/* Stored as a plain string and split on commas and newlines by the
+                hero, so the editor can type a natural list rather than learn a
+                repeater for a field that is only ever read once. */}
+            <textarea
+              value={
+                Array.isArray(localContent.capabilities)
+                  ? localContent.capabilities.join(', ')
+                  : localContent.capabilities || ''
+              }
+              onChange={e =>
+                setLocalContent({ ...localContent, capabilities: e.target.value })
+              }
+              rows={2}
+              className="admin-input"
+              placeholder="Webdesign, Webshop, SEO, Meta Ads"
+            />
+            <p className="mt-1.5 text-[12px] leading-snug text-[var(--ink-3)]">
+              Adskil med komma. Vises som en linje under knapperne og er det, der
+              gør heroen til et webbureau frem for en påstand.
+            </p>
           </div>
           <div>
             <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Titel (H1)</label>
@@ -2805,10 +3114,93 @@ function NavItemEditModal({ item, pages, onClose, onSave }: { item: NavItem; pag
             onClick={handleSave}
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90"
           >
-            Gem ændringer
+            Anvend
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * A meta field with its length budget shown.
+ *
+ * The signal is on the field's border as well as in the counter, because an 11px
+ * label is easy to miss while typing and the border is what the eye is already
+ * on. The border colour is set by an attribute selector in admin.css rather than
+ * by a utility class: `.admin-input` carries its own border, and a same-weight
+ * utility would lose to it or win depending on which stylesheet loaded first.
+ *
+ * The limits and the states themselves live in ./seo-budget, shared with the
+ * dashboard so one page cannot be "good" in the modal and "short" on the
+ * dashboard.
+ */
+function MetaField({
+  id,
+  label,
+  value,
+  onChange,
+  limit,
+  placeholder,
+  rows,
+}: {
+  id: string
+  label: string
+  value: string
+  onChange: (next: string) => void
+  limit: number
+  placeholder?: string
+  /** A textarea of this height when given, a single-line input otherwise. */
+  rows?: number
+}) {
+  const state = budgetState(value.length, limit)
+  // An untouched field says nothing here; the dashboard is where a missing meta
+  // description is worth reporting.
+  const note = state === 'empty' ? null : budgetLabel(state, value.length, limit)
+
+  return (
+    <div>
+      <div className="mb-1.5 flex items-baseline justify-between gap-3">
+        <label
+          htmlFor={id}
+          className="block text-[13px] font-medium leading-none text-[var(--ink-2)]"
+        >
+          {label}
+        </label>
+        <span
+          // Not a live region: it would read every keystroke back while typing.
+          // The word beside the number carries the state instead.
+          title={`Google bruger omkring ${limit} tegn`}
+          className={`flex shrink-0 items-baseline gap-1.5 text-[11px] ${BUDGET_TONE[state]}`}
+        >
+          <span className="admin-num">
+            {value.length} / {limit}
+          </span>
+          {note && <span className="font-medium">{note}</span>}
+        </span>
+      </div>
+
+      {rows ? (
+        <textarea
+          id={id}
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          rows={rows}
+          className="admin-input"
+          data-budget={state}
+          placeholder={placeholder}
+        />
+      ) : (
+        <input
+          id={id}
+          type="text"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+          className="admin-input"
+          data-budget={state}
+          placeholder={placeholder}
+        />
+      )}
     </div>
   )
 }
@@ -2839,26 +3231,23 @@ function MetaEditModal({ page, onClose, onSave, onSelectImage }: { page: any; on
               placeholder={page.title?.toLowerCase().replace(/\s+/g, '-') || ''}
             />
           </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Meta Titel</label>
-            <input
-              type="text"
-              value={metaTitle}
-              onChange={e => setMetaTitle(e.target.value)}
-              className="admin-input"
-              placeholder={`${page.title} | StayMain`}
-            />
-          </div>
-          <div>
-            <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Meta Beskrivelse</label>
-            <textarea
-              value={metaDescription}
-              onChange={e => setMetaDescription(e.target.value)}
-              rows={4}
-              className="admin-input"
-              placeholder="Kort beskrivelse af siden..."
-            />
-          </div>
+          <MetaField
+            id="meta-title"
+            label="Meta Titel"
+            value={metaTitle}
+            onChange={setMetaTitle}
+            limit={META_TITLE_LIMIT}
+            placeholder={`${page.title} | StayMain`}
+          />
+          <MetaField
+            id="meta-description"
+            label="Meta Beskrivelse"
+            value={metaDescription}
+            onChange={setMetaDescription}
+            limit={META_DESCRIPTION_LIMIT}
+            placeholder="Kort beskrivelse af siden..."
+            rows={4}
+          />
           <div>
             <label className="block text-[13px] font-medium leading-none text-[var(--ink-2)]">Meta Billede</label>
             <div className="flex items-center gap-3">
@@ -2881,7 +3270,10 @@ function MetaEditModal({ page, onClose, onSave, onSelectImage }: { page: any; on
             <div className="rounded-lg border border-[var(--hairline)] bg-[var(--surface-sunken)] p-4">
               <div className="flex flex-col">
                 <span className="text-sm text-[var(--ink-2)] truncate">
-                  staymain.dk{slug === 'home' ? '' : `/${slug}`}
+                  {/* The same host the sitemap submits, so what an editor is shown
+                      here is what Google will be sent. */}
+                  {new URL(SITE_URL).host}
+                  {slug === 'home' ? '' : `/${slug}`}
                 </span>
                 <span className="text-xl text-[var(--accent)] hover:underline cursor-pointer truncate">
                   {metaTitle || `${page.title} | StayMain`}
@@ -2904,7 +3296,7 @@ function MetaEditModal({ page, onClose, onSave, onSelectImage }: { page: any; on
             onClick={handleSave}
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90"
           >
-            Gem ændringer
+            Anvend
           </button>
         </div>
       </div>
@@ -2972,7 +3364,7 @@ function PageEditModal({ page, pages, onClose, onSave }: { page: { slug: string;
             onClick={handleSave}
             className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90"
           >
-            Gem ændringer
+            Anvend
           </button>
         </div>
       </div>
@@ -3271,6 +3663,10 @@ function EditUserModal({ user, onClose, onSaveEmail, onSavePassword, onDelete, u
               disabled={loading || !email.trim()}
               className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed"
             >
+              {/* Keeps "Gem ændringer" while every other modal says "Anvend",
+                  because this one really does write: users go straight to
+                  /api/users and are outside the draft entirely. A save button
+                  cannot un-create an account, so nothing here waits for one. */}
               {loading ? 'Gemmer...' : 'Gem ændringer'}
             </button>
           </div>
@@ -3389,7 +3785,7 @@ function EditCaseModal({ caseItem, onClose, onSave, onDelete }: { caseItem: Case
               Annuller
             </button>
             <button onClick={handleSave} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90">
-              Gem ændringer
+              Anvend
             </button>
           </div>
         </div>
@@ -3483,7 +3879,7 @@ function EditTestimonialModal({ testimonial, onClose, onSave, onDelete }: { test
               Annuller
             </button>
             <button onClick={handleSave} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90">
-              Gem ændringer
+              Anvend
             </button>
           </div>
         </div>
@@ -3989,7 +4385,7 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
               Annuller
             </button>
             <button onClick={handleSave} className="inline-flex h-9 items-center justify-center gap-1.5 rounded-md bg-[var(--ink)] px-3.5 text-sm font-medium text-[var(--surface)] transition-opacity hover:opacity-90">
-              Gem ændringer
+              Anvend
             </button>
           </div>
         </div>
@@ -4005,17 +4401,14 @@ function EditLogoModal({ logo, onClose, onSave, onDelete }: { logo: CompanyLogo;
   )
 }
 
+/**
+ * The CMS home.
+ *
+ * This used to redirect to `/admin/sider` on mount, which meant logging in sent
+ * you out of the address you asked for and left a page of nothing in the history
+ * where `/admin` used to be. It renders the workspace now, opening on the
+ * dashboard.
+ */
 export default function AdminPage() {
-  const router = useRouter()
-  // Every section has a URL now, so there is nothing to render here. Sending
-  // people to a real address keeps the rail, the browser history and any
-  // shared link pointing at the same place.
-  useEffect(() => {
-    router.replace(`/admin/${DEFAULT_SECTION}`)
-  }, [router])
-  return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="animate-pulse text-[var(--ink-2)]">Indlæser...</div>
-    </div>
-  )
+  return <AdminWorkspace initialView="home" />
 }

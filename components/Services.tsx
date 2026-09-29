@@ -47,12 +47,12 @@ export default function Services() {
             return (
               <div
                 key={service.key}
-                className="group p-4 sm:p-5 rounded-xl bg-[#F8FAFC] dark:bg-white/5 border border-[#E2E8F0] dark:border-white/10 hover:border-[#2563EB] dark:hover:border-[#2563EB] transition-all duration-300 hover:shadow-lg hover:shadow-[#2563EB]/10"
+                className="group p-4 sm:p-5 rounded-xl bg-[#F8FAFC] dark:bg-white/5 border border-[#E2E8F0] dark:border-white/10 hover:border-[var(--brand-500)] dark:hover:border-[var(--brand-500)] transition-all duration-300 hover:shadow-lg hover:shadow-[var(--brand-500)]/10"
               >
-                <div className="w-9 h-9 rounded-lg bg-[#2563EB]/10 flex items-center justify-center mb-3 group-hover:bg-[#2563EB] transition-colors duration-300">
+                <div className="w-9 h-9 rounded-lg bg-[var(--brand-500)]/10 flex items-center justify-center mb-3 group-hover:bg-[var(--brand-500)] transition-colors duration-300">
                   {IconComponent && (
                     <IconComponent 
-                      className="w-5 h-5 text-[#2563EB] group-hover:text-white transition-colors duration-300" 
+                      className="w-5 h-5 text-[var(--brand-500)] group-hover:text-white transition-colors duration-300" 
                       strokeWidth={1.5}
                     />
                   )}

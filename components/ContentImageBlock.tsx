@@ -65,7 +65,7 @@ export default function ContentImageBlock({ content }: ContentImageBlockProps) {
               {buttonText && buttonLink && (
                 <Link
                   href={buttonLink}
-                  className="inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-[#2563EB] hover:bg-[#1D4ED8] text-white font-medium rounded-lg transition-colors duration-300 text-sm sm:text-base"
+                  className="inline-flex items-center gap-2 px-5 sm:px-6 py-2.5 sm:py-3 bg-[var(--brand-500)] hover:bg-[var(--brand-600)] text-white font-medium rounded-lg transition-colors duration-300 text-sm sm:text-base"
                 >
                   {buttonText}
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">

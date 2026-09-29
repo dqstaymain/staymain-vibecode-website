@@ -94,7 +94,8 @@ export async function loadCMSPages(): Promise<any[] | null> {
       title: item.title,
       parentSlug: item.parent_slug,
       blocks: item.blocks,
-      meta: item.meta
+      meta: item.meta,
+      updatedAt: item.updated_at
     }))
   } catch (error) {
     console.error('Error loading pages:', error)
@@ -176,7 +177,8 @@ export async function loadCMSNavigation(): Promise<any[] | null> {
       pageSlug: item.page_slug,
       parentNavId: item.parent_nav_id,
       children: item.children || undefined,
-      newTab: item.new_tab || undefined
+      newTab: item.new_tab || undefined,
+      updatedAt: item.updated_at
     }))
   } catch (error) {
     console.error('Error loading navigation:', error)
@@ -233,7 +235,8 @@ export async function loadCMSCases(): Promise<any[] | null> {
       id: item.id,
       title: item.title,
       image: item.image,
-      link: item.link
+      link: item.link,
+      updatedAt: item.updated_at
     }))
   } catch (error) {
     console.error('Error loading cases:', error)
@@ -270,7 +273,8 @@ export async function loadCMSTestimonials(): Promise<any[] | null> {
       name: item.name,
       role: item.role,
       content: item.content,
-      image: item.image
+      image: item.image,
+      updatedAt: item.updated_at
     }))
   } catch (error) {
     console.error('Error loading testimonials:', error)
@@ -281,7 +285,15 @@ export async function loadCMSTestimonials(): Promise<any[] | null> {
 export async function saveCMSCompanyLogos(logos: any[]): Promise<boolean> {
   try {
     const withPosition = supportsPosition('cms_company_logos')
-    const formatted = logos.map((l, index) => ({ ...l, ...(withPosition ? { position: index } : {}) }))
+    // Spreading is what made this one different from the other saves: the row
+    // came back from `select('*')` carrying columns the table has and the
+    // client model does not, and every one of them went straight back out. A
+    // column the table does not have is a 400 from PostgREST, so the client's
+    // own `updatedAt` has to come back off before the payload is sent.
+    const formatted = logos.map((l, index) => {
+      const { updatedAt: _editedAt, ...columns } = l
+      return { ...columns, ...(withPosition ? { position: index } : {}) }
+    })
     const { error } = await supabase.from('cms_company_logos').upsert(formatted)
     if (error) throw error
     return true
@@ -295,7 +307,13 @@ export async function loadCMSCompanyLogos(): Promise<any[] | null> {
   try {
     const { data, error } = await selectOrdered('cms_company_logos')
     if (error || !data) return null
-    return data
+    return data.map(item => ({
+      id: item.id,
+      name: item.name,
+      image: item.image,
+      website: item.website,
+      updatedAt: item.updated_at
+    }))
   } catch (error) {
     console.error('Error loading company logos:', error)
     return null

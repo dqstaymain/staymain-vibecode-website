@@ -22,7 +22,14 @@ export type AdminSection = keyof typeof ADMIN_SECTIONS
 export const isAdminSection = (v: string): v is AdminSection =>
   Object.prototype.hasOwnProperty.call(ADMIN_SECTIONS, v)
 
-/** Where `/admin` lands when opened directly. */
-export const DEFAULT_SECTION: AdminSection = 'sider'
+/**
+ * A screen the workspace can show.
+ *
+ * `home` is the dashboard `/admin` opens on. It is deliberately not a section:
+ * every section is addressed by its own URL segment, and the dashboard's address
+ * is `/admin` itself, so putting it in the registry would invent a second address
+ * showing the same thing.
+ */
+export type AdminView = 'home' | AdminSection
 
 export const sectionHref = (s: AdminSection) => `/admin/${s}`

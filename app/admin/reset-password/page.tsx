@@ -173,7 +173,9 @@ export default function ResetPasswordPage() {
                 value={newPassword}
                 onChange={e => setNewPassword(e.target.value)}
                 placeholder="Mindst 8 tegn"
-                className="pr-10"
+                // Not `pr-10`: the base class wins that and the toggle ends up on
+                // top of the password. See .admin-input[data-trailing-icon].
+                data-trailing-icon="toggle"
                 required
               />
               <button

@@ -18,6 +18,43 @@ body {
   overflow-x: hidden;
 }
 
+/* ==========================================================================
+   Brand: royal blue
+   --------------------------------------------------------------------------
+   One ramp, referenced everywhere, so the site and the CMS cannot drift apart
+   and a colour change is a single edit rather than a find-and-replace.
+
+   500 is #0060E6, which is the blue mitid.dk uses for its primary actions
+   (#0060E6 appears ~330 times in their stylesheets, alongside #004CB8 for
+   hover, #00398A for the darkest step and #B8D2F8/#97C4FB/#67A6FF for tints).
+   The steps in between are lifted straight from that set, so this reads as the
+   same family rather than as an approximation of it.
+
+   The two steps around 500 are picked for contrast, not for looks:
+     - 500 is 5.50:1 on white, so it is AA for text and for a white-filled
+       button alike, and does not need a separate darker step for either.
+     - 600 is 7.70:1 on white, used for hover and for small text that has to
+       survive on a white background.
+     - 300 is 10.46:1 on the hero's dark background, so accents on dark use 300.
+   ========================================================================== */
+:root {
+  --brand-50: #eef5ff;
+  --brand-100: #d9e9fe;
+  --brand-200: #b8d2f8;
+  --brand-300: #97c4fb;
+  --brand-400: #67a6ff;
+  --brand-500: #0060e6;
+  --brand-600: #004cb8;
+  --brand-700: #00409a;
+  --brand-800: #00398a;
+  --brand-900: #002a63;
+
+  /* The hero sits on near-black with a blue cast, not on slate, so the brand
+     blue reads as light on it rather than as a stain. */
+  --night: #0b1020;
+  --night-2: #131a38;
+}
+
 h1, h2 {
   font-family: 'Libre Baskerville', Georgia, serif !important;
   font-weight: 300 !important;
@@ -33,12 +70,6 @@ h1, h2 {
   50% { opacity: 0.8; }
 }
 
-@keyframes gradient-shift {
-  0% { background-position: 0% 50%; }
-  50% { background-position: 100% 50%; }
-  100% { background-position: 0% 50%; }
-}
-
 @keyframes fadeInUp {
   from { opacity: 0; transform: translateY(30px); }
   to { opacity: 1; transform: translateY(0); }
@@ -50,9 +81,147 @@ h1, h2 {
 }
 
 .hero-gradient {
-  background: linear-gradient(135deg, #0F172A 0%, #1E3A5F 50%, #0F172A 100%);
-  background-size: 400% 400%;
-  animation: gradient-shift 15s ease infinite;
+  background:
+    radial-gradient(100% 70% at 50% -10%, rgba(0, 96, 230, 0.22) 0%, transparent 60%),
+    linear-gradient(165deg, var(--night-2) 0%, var(--night) 52%, #06090f 100%);
+}
+
+/* The aurora behind the hero. Four soft royal washes reading as one light from
+   above the fold. No blur filter: the radial gradients are already soft, and
+   blurring them was what made the first version of this invisible. */
+.hero-aurora {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(58% 62% at 50% -12%, rgba(0, 96, 230, 0.5) 0%, transparent 62%),
+    radial-gradient(44% 52% at 8% 30%, rgba(0, 96, 230, 0.32) 0%, transparent 66%),
+    radial-gradient(38% 46% at 94% 14%, rgba(103, 166, 255, 0.26) 0%, transparent 66%),
+    radial-gradient(75% 48% at 50% 112%, rgba(0, 64, 154, 0.55) 0%, transparent 72%);
+}
+
+/* Engineering grid, faded out towards the edges so it frames the content
+   instead of competing with it. */
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.075) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.075) 1px, transparent 1px);
+  background-size: 64px 64px;
+  -webkit-mask-image: radial-gradient(85% 75% at 50% 42%, transparent 12%, #000 92%);
+  mask-image: radial-gradient(85% 75% at 50% 42%, transparent 12%, #000 92%);
+}
+
+/* Film grain. Breaks up the banding that big blurred gradients show on
+   gradients of this size. */
+/* A scrim shaped to where the copy actually sits.
+   A flat overlay cannot do this job: at 0.6 the headline is fine but the body
+   copy and the stat labels land on bright water and drop under 4.5:1, and
+   raising the flat overlay far enough to fix that just greys the whole video
+   out. Darkening the text side instead leaves the footage visible where there
+   is nothing to read. */
+.hero-scrim-left {
+  background: linear-gradient(
+    100deg,
+    rgba(6, 9, 15, 0.93) 0%,
+    rgba(6, 9, 15, 0.88) 26%,
+    rgba(6, 9, 15, 0.6) 52%,
+    rgba(6, 9, 15, 0.22) 76%,
+    rgba(6, 9, 15, 0.12) 100%
+  );
+}
+
+.hero-scrim-center {
+  background: linear-gradient(
+    180deg,
+    rgba(6, 9, 15, 0.82) 0%,
+    rgba(6, 9, 15, 0.66) 45%,
+    rgba(6, 9, 15, 0.8) 100%
+  );
+}
+
+/* The eyebrow, capabilities and stat labels are the smallest, lightest text on
+   the hero and they sit directly on the footage. A tight shadow keeps them
+   legible over a bright frame without the look of a drop shadow. */
+.hero-on-media {
+  text-shadow: 0 1px 12px rgba(6, 9, 15, 0.55);
+}
+
+/* Inherited from .hero-on-media. A shadow behind text on a solid royal or white
+   fill is just a smudge around the letterforms. */
+.hero-on-media .btn-primary,
+.hero-on-media .btn-secondary {
+  text-shadow: none;
+}
+
+.hero-grain {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+.hero-eyebrow {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--brand-300);
+}
+
+.hero-sub {
+  color: rgba(226, 232, 255, 0.74);
+  line-height: 1.65;
+}
+
+/* The service list under the hero: what the agency actually does, stated once
+   and plainly. Separated by middots so it wraps as a single line of text
+   rather than becoming a row of competing chips. */
+.hero-capabilities {
+  color: rgba(226, 232, 255, 0.72);
+  font-size: 0.75rem;
+  font-weight: 500;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.hero-capabilities > li + li::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  margin-right: 0.9rem;
+  margin-left: 0.9rem;
+  border-radius: 50%;
+  background: var(--brand-400);
+  vertical-align: middle;
+}
+
+.hero-stat-value {
+  font-family: 'Libre Baskerville', Georgia, serif;
+  color: #fff;
+  line-height: 1;
+}
+
+.hero-stat-label {
+  color: rgba(226, 232, 255, 0.64);
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.hero-scroll-cue {
+  color: rgba(226, 232, 255, 0.4);
+  transition: color 0.3s ease;
+}
+
+.hero-scroll-cue:hover {
+  color: rgba(226, 232, 255, 0.85);
 }
 
 .orb {
@@ -65,21 +234,21 @@ h1, h2 {
 .orb-1 {
   width: 600px;
   height: 600px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.3) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(0, 96, 230, 0.34) 0%, transparent 70%);
   animation: float 8s ease-in-out infinite;
 }
 
 .orb-2 {
   width: 500px;
   height: 500px;
-  background: radial-gradient(circle, rgba(30, 58, 95, 0.5) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(0, 64, 154, 0.5) 0%, transparent 70%);
   animation: float 10s ease-in-out infinite reverse;
 }
 
 .orb-3 {
   width: 400px;
   height: 400px;
-  background: radial-gradient(circle, rgba(59, 130, 246, 0.2) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(103, 166, 255, 0.24) 0%, transparent 70%);
   animation: pulse-glow 4s ease-in-out infinite;
 }
 
@@ -113,13 +282,20 @@ h1, h2 {
 }
 
 .service-card:hover {
-  @apply shadow-xl border-blue-500/30;
+  @apply shadow-xl;
+  border-color: var(--brand-500);
+  box-shadow: 0 24px 48px -20px rgba(0, 96, 230, 0.4);
 }
 
 .btn-primary {
-  @apply inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 sm:py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-full transition-all duration-300;
+  @apply inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3 sm:py-4 text-white font-semibold rounded-full transition-all duration-300;
+  background: var(--brand-500);
   position: relative;
   overflow: hidden;
+}
+
+.btn-primary:hover {
+  background: var(--brand-600);
 }
 
 .btn-primary::before {
@@ -139,7 +315,7 @@ h1, h2 {
 
 .btn-primary:hover {
   transform: translateY(-2px);
-  box-shadow: 0 20px 40px -10px rgba(59, 130, 246, 0.4);
+  box-shadow: 0 20px 40px -10px rgba(0, 96, 230, 0.55);
 }
 
 .btn-secondary {
@@ -162,7 +338,7 @@ h1, h2 {
   left: 0;
   width: 0;
   height: 2px;
-  background: #3B82F6;
+  background: var(--brand-500);
   transition: width 0.3s ease;
 }
 

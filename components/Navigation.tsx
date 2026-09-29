@@ -71,10 +71,10 @@ function NavMenuLevel({
               onClick={onNavigate}
               className={ROW_BASE}
             >
-              <span className="font-medium text-slate-900 dark:text-white transition-colors group-hover/item:text-blue-600 dark:group-hover/item:text-blue-400">
+              <span className="font-medium text-slate-900 dark:text-white transition-colors group-hover/item:text-[var(--brand-600)] dark:group-hover/item:text-[var(--brand-300)]">
                 {item.label}
               </span>
-              <ChevronRight className="w-4 h-4 shrink-0 text-slate-300 group-hover/item:text-blue-500 opacity-0 group-hover/item:opacity-100 transition-all" />
+              <ChevronRight className="w-4 h-4 shrink-0 text-slate-300 group-hover/item:text-[var(--brand-600)] opacity-0 group-hover/item:opacity-100 transition-all" />
             </Link>
           )
         }
@@ -89,11 +89,11 @@ function NavMenuLevel({
               aria-expanded={open}
               className={ROW_BASE}
             >
-              <span className="font-medium text-slate-900 dark:text-white transition-colors group-hover/item:text-blue-600 dark:group-hover/item:text-blue-400">
+              <span className="font-medium text-slate-900 dark:text-white transition-colors group-hover/item:text-[var(--brand-600)] dark:group-hover/item:text-[var(--brand-300)]">
                 {item.label}
               </span>
               <ChevronRight
-                className={`w-4 h-4 shrink-0 text-slate-300 group-hover/item:text-blue-500 transition-transform duration-200 ${
+                className={`w-4 h-4 shrink-0 text-slate-300 group-hover/item:text-[var(--brand-600)] transition-transform duration-200 ${
                   open ? 'rotate-90' : ''
                 }`}
               />
@@ -108,7 +108,7 @@ function NavMenuLevel({
               >
                 <div className={`${PANEL_SURFACE} min-w-[15rem] max-w-[22rem]`}>
                   <div className={`${PANEL_INNER} rounded-2xl py-2`}>
-                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500" />
+                    <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--brand-500)] via-[var(--brand-300)] to-[var(--brand-500)]" />
                     <NavMenuLevel
                       items={kids}
                       openIds={openIds}
@@ -265,7 +265,7 @@ export default function Navigation() {
         <div className="max-w-[1600px] mx-auto px-4 sm:px-6 lg:px-12 xl:px-16">
           <div className="flex items-center justify-between h-16 sm:h-20">
             <Link href="/" className={`text-xl sm:text-2xl font-bold z-50 transition-colors duration-300 ${scrolled || mobileOpen ? 'text-slate-900 dark:text-white' : 'text-white'}`}>
-              Stay<span className="text-blue-500">Main</span>
+              Stay<span className="text-[var(--brand-600)]">Main</span>
             </Link>
 
             <div className="hidden lg:flex items-center gap-6 xl:gap-8" data-nav-desktop>
@@ -321,7 +321,7 @@ export default function Navigation() {
                         <div className={PANEL_SURFACE}>
                           <div className="absolute -top-3 left-1/2 -translate-x-1/2 w-6 h-6 bg-white/70 dark:bg-slate-900/70 backdrop-blur-xl border-l border-t border-white/20 dark:border-slate-700/30 rotate-45" />
                           <div className={`${PANEL_INNER} rounded-2xl py-2`}>
-                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-blue-500" />
+                            <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-[var(--brand-500)] via-[var(--brand-300)] to-[var(--brand-500)]" />
                             <NavMenuLevel
                               items={kids}
                               openIds={dropdownOpen}
@@ -349,7 +349,7 @@ export default function Navigation() {
               )}
               <Link
                 href="/kontakt"
-                className="px-5 xl:px-6 py-2.5 bg-blue-500 hover:bg-blue-600 text-white font-medium rounded-full transition-all hover:shadow-lg hover:shadow-blue-500/30 text-sm"
+                className="px-5 xl:px-6 py-2.5 bg-[var(--brand-500)] hover:bg-[var(--brand-600)] text-white font-medium rounded-full transition-all hover:shadow-lg hover:shadow-[rgba(65,105,225,0.3)] text-sm"
               >
                 {contactInfo.headerButtonText}
               </Link>
@@ -401,7 +401,7 @@ export default function Navigation() {
                   {mobilePath.length > 0 && (
                     <button
                       onClick={popMobileLevel}
-                      className="flex items-center gap-3 py-4 text-blue-500 font-medium"
+                      className="flex items-center gap-3 py-4 text-[var(--brand-600)] font-medium"
                     >
                       <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
@@ -431,7 +431,7 @@ export default function Navigation() {
                             className="w-full flex items-center justify-between py-4 text-lg font-medium text-white border-b border-slate-800 text-left"
                           >
                             <span className="truncate">{getLabel(item)}</span>
-                            <svg className="w-6 h-6 shrink-0 text-blue-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <svg className="w-6 h-6 shrink-0 text-[var(--brand-600)]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                             </svg>
                           </button>
@@ -456,7 +456,7 @@ export default function Navigation() {
             <Link
               href="/kontakt"
               onClick={closeMobile}
-              className="block w-full text-center px-6 py-4 bg-blue-500 hover:bg-blue-600 text-white font-semibold rounded-2xl transition-all text-lg"
+              className="block w-full text-center px-6 py-4 bg-[var(--brand-500)] hover:bg-[var(--brand-600)] text-white font-semibold rounded-2xl transition-all text-lg"
             >
               {contactInfo.headerButtonText}
             </Link>

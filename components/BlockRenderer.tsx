@@ -96,7 +96,7 @@ function StatsBlock({ content = {} }: { content?: Record<string, any> }) {
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
           {stats.map((stat: any, index: number) => (
             <div key={stat.id ?? `stat-${index}`} className="text-center">
-              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-blue-500 mb-2">
+              <div className="text-3xl sm:text-4xl lg:text-5xl font-bold text-[var(--brand-600)] mb-2">
                 {stat.number}
               </div>
               <div className="text-sm text-base text-slate-600 dark:text-slate-400">

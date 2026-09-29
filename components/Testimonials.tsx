@@ -75,13 +75,13 @@ export default function Testimonials() {
                   className="w-full flex-shrink-0 px-4"
                 >
                   <div className="bg-white dark:bg-[#0F172A] rounded-2xl p-8 sm:p-12 shadow-lg border border-[#E2E8F0] dark:border-white/10">
-                    <Quote className="w-10 h-10 text-[#2563EB] mb-6" />
+                    <Quote className="w-10 h-10 text-[var(--brand-500)] mb-6" />
                     <p className="text-lg sm:text-xl lg:text-2xl text-[#334155] dark:text-white/90 mb-8 leading-relaxed">
                       "{item.text}"
                     </p>
                     <div className="flex items-center gap-4">
-                      <div className="w-12 h-12 rounded-full bg-[#2563EB]/10 flex items-center justify-center">
-                        <span className="text-lg font-semibold text-[#2563EB]">
+                      <div className="w-12 h-12 rounded-full bg-[var(--brand-500)]/10 flex items-center justify-center">
+                        <span className="text-lg font-semibold text-[var(--brand-500)]">
                           {item.author.charAt(0)}
                         </span>
                       </div>
@@ -103,7 +103,7 @@ export default function Testimonials() {
           <div className="flex items-center justify-center gap-4 mt-8">
             <button
               onClick={goToPrev}
-              className="p-2 rounded-full bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/20 text-[#64748b] dark:text-white/60 hover:bg-[#2563EB] hover:text-white hover:border-[#2563EB] transition-all duration-200"
+              className="p-2 rounded-full bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/20 text-[#64748b] dark:text-white/60 hover:bg-[var(--brand-500)] hover:text-white hover:border-[var(--brand-500)] transition-all duration-200"
               aria-label="Previous testimonial"
             >
               <ChevronLeft size={24} />
@@ -116,8 +116,8 @@ export default function Testimonials() {
                   onClick={() => setCurrentIndex(index)}
                   className={`w-2 h-2 rounded-full transition-all duration-300 ${
                     index === currentIndex 
-                      ? 'bg-[#2563EB] w-6' 
-                      : 'bg-[#CBD5E1] dark:bg-white/30 hover:bg-[#2563EB]/50'
+                      ? 'bg-[var(--brand-500)] w-6' 
+                      : 'bg-[#CBD5E1] dark:bg-white/30 hover:bg-[var(--brand-500)]/50'
                   }`}
                   aria-label={`Go to testimonial ${index + 1}`}
                 />
@@ -126,7 +126,7 @@ export default function Testimonials() {
 
             <button
               onClick={goToNext}
-              className="p-2 rounded-full bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/20 text-[#64748b] dark:text-white/60 hover:bg-[#2563EB] hover:text-white hover:border-[#2563EB] transition-all duration-200"
+              className="p-2 rounded-full bg-white dark:bg-white/10 border border-[#E2E8F0] dark:border-white/20 text-[#64748b] dark:text-white/60 hover:bg-[var(--brand-500)] hover:text-white hover:border-[var(--brand-500)] transition-all duration-200"
               aria-label="Next testimonial"
             >
               <ChevronRight size={24} />

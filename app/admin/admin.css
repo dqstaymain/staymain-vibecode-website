@@ -26,15 +26,19 @@
   --ink-3: #a1a1aa;
   --hairline: #e4e4e7;
   --hairline-strong: #d4d4d8;
-  /* Blue, not indigo: indigo read as purple. Matches the site's #2563EB. */
-  --accent: #2563eb;
-  --accent-hover: #1d4ed8;
-  --accent-soft: #eff6ff;
-  --accent-line: #bfdbfe;
+  /* Royal blue, taken from the site's own ramp in globals.css so the CMS and
+     the site it edits cannot drift apart. 500 is the brand blue; 600 is the
+     step that clears AA for text on white. */
+  --accent: var(--brand-500);
+  --accent-hover: var(--brand-600);
+  --accent-soft: var(--brand-50);
+  --accent-line: var(--brand-200);
   --danger: #b91c1c;
   --danger-soft: #fef2f2;
   --success: #15803d;
   --success-soft: #f0fdf4;
+  --warning: #b45309;
+  --warning-soft: #fffbeb;
 }
 
 .dark .admin-shell {
@@ -47,14 +51,18 @@
   --ink-3: #71717a;
   --hairline: #27272a;
   --hairline-strong: #3f3f46;
-  --accent: #60a5fa;
-  --accent-hover: #93c5fd;
-  --accent-soft: #172554;
-  --accent-line: #1e3a8a;
+  /* On dark the brand blue is too dark to read, so the accent steps up the
+     ramp to 300, which is 8.76:1 against this background. */
+  --accent: var(--brand-300);
+  --accent-hover: var(--brand-200);
+  --accent-soft: #0c1a3c;
+  --accent-line: #1d3a72;
   --danger: #f87171;
   --danger-soft: #2a1215;
   --success: #4ade80;
   --success-soft: #0f2419;
+  --warning: #fbbf24;
+  --warning-soft: #2a1f08;
 }
 
 /* Reset the public site's serif heading rule inside the admin. The preview is
@@ -135,6 +143,64 @@
 .admin-input:disabled {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* Padding for an input with an icon sitting in front of the text.
+ *
+ * By attribute selector, because `.admin-input` above sets its own padding and a
+ * same-weight utility loses to it: the Tailwind output is linked before this
+ * file, so the later rule wins and `pl-8` does nothing at all - the text ends up
+ * underneath the icon rather than beside it. Higher specificity makes the result
+ * independent of stylesheet order, which is the only reason this works.
+ */
+.admin-input[data-leading-icon] {
+  padding-left: 2.25rem;
+}
+
+/* And for one sitting after the text - a show/hide toggle over a password, which
+ * is the same collision at the other end: an absolutely positioned button at
+ * right-1 sits 4px to 36px in, and the default 11px padding puts the text
+ * underneath it. */
+.admin-input[data-trailing-icon] {
+  padding-right: 2.5rem;
+}
+
+/* The select hides the browser's own arrow with `appearance-none`, which left it
+ * with no indication that it opens anything at all. Drawn here so `appearance-
+ * none` means something, and so the right-hand padding has something to make
+ * room for. `select.admin-input` rather than `.admin-input` because only a select
+ * wants it, and it has to outrank the base class to win. */
+select.admin-input {
+  padding-right: 2.25rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23a1a1aa' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 0.65rem center;
+  background-size: 1rem 1rem;
+}
+
+.dark .admin-shell select.admin-input {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%2371717a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+}
+
+/* Length-budget feedback for the SEO meta fields.
+ *
+ * Written as attribute selectors on purpose: `.admin-input` above sets its own
+ * border colour, and a same-weight utility class would beat it or lose to it
+ * depending on whether admin.css or the Tailwind output happened to load first.
+ * An attribute selector is more specific than the class, so the outcome does not
+ * depend on stylesheet order. `empty` is deliberately absent, so an untouched
+ * field keeps the ordinary border. */
+.admin-input[data-budget='good'] {
+  border-color: var(--success);
+}
+
+.admin-input[data-budget='short'],
+.admin-input[data-budget='near'] {
+  border-color: var(--warning);
+}
+
+.admin-input[data-budget='over'] {
+  border-color: var(--danger);
 }
 
 /* The block-stack spine: a continuous margin rule the rows hang off. */

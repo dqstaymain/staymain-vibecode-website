@@ -21,8 +21,8 @@ export default async function SiderEditorRoute({
   // "ny" is the create route. The dialog that creates the page lives in the
   // workspace, so it is opened from there rather than duplicated here.
   if (joined === 'ny') {
-    return <AdminWorkspace startCreatingPage />
+    return <AdminWorkspace initialView="sider" startCreatingPage />
   }
 
-  return <AdminWorkspace initialSlug={decodeURIComponent(joined)} />
+  return <AdminWorkspace initialView="sider" initialSlug={decodeURIComponent(joined)} />
 }
